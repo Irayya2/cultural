@@ -12,9 +12,9 @@ function getUucmsSemesters(uucmsNo) {
   
   if (number < 1 || number > 250) return null;
   
-  if (batch === '26') return [1, 2];
-  if (batch === '25') return [3, 4];
-  if (batch === '24') return [5, 6];
+  if (batch === '26') return [1];
+  if (batch === '25') return [3];
+  if (batch === '24') return [5];
   
   return null;
 }

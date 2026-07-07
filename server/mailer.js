@@ -27,9 +27,9 @@ function getTransporter() {
     port: 587,
     secure: false,
     family: 4,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 5000,
     auth: {
       user: normalizeEnvValue(process.env.GMAIL_USER),
       pass: normalizeEnvValue(process.env.GMAIL_APP_PASSWORD),
