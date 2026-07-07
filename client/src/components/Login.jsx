@@ -1,11 +1,30 @@
 import { useState, useRef } from 'react';
 import { api } from '../api';
 
+function getUucmsSemesters(uucmsNo) {
+  if (!uucmsNo) return null;
+  const clean = String(uucmsNo).trim().toUpperCase();
+  const match = clean.match(/^U15BH(24|25|26)S(\d{4})$/);
+  if (!match) return null;
+  
+  const batch = match[1]; // "24", "25", "26"
+  const number = parseInt(match[2], 10);
+  
+  if (number < 1 || number > 250) return null;
+  
+  if (batch === '26') return [1, 2];
+  if (batch === '25') return [3, 4];
+  if (batch === '24') return [5, 6];
+  
+  return null;
+}
+
 export default function Login({ onLogin }) {
   const [role, setRole] = useState('student');
   const [step, setStep] = useState('email');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [uucmsNo, setUucmsNo] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +34,13 @@ export default function Login({ onLogin }) {
     e.preventDefault();
     setError('');
     if (!email.trim()) return setError('Enter your email address.');
+    if (role === 'student') {
+      if (!name.trim()) return setError('Enter your name.');
+      if (!uucmsNo.trim()) return setError('Enter your UUCMS number.');
+      if (!getUucmsSemesters(uucmsNo)) {
+        return setError('Invalid UUCMS Number (Must be U15BH24S/25S/26S followed by a number from 0001 to 0250).');
+      }
+    }
     setLoading(true);
     try {
       await api.requestOtp(email.trim(), role);
@@ -34,8 +60,8 @@ export default function Login({ onLogin }) {
     if (code.length !== 6) return setError('Enter the full 6-digit code.');
     setLoading(true);
     try {
-      const res = await api.verifyOtp(email.trim(), role, code, name.trim());
-      onLogin({ token: res.token, role: res.role, email: email.trim() });
+      const res = await api.verifyOtp(email.trim(), role, code, name.trim(), role === 'student' ? uucmsNo.trim().toUpperCase() : undefined);
+      onLogin({ token: res.token, role: res.role, email: email.trim(), uucmsNo: role === 'student' ? uucmsNo.trim().toUpperCase() : undefined });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -119,16 +145,45 @@ export default function Login({ onLogin }) {
                 />
               </div>
               {role === 'student' && (
-                <div className="field">
-                  <label htmlFor="name">Your name</label>
-                  <input
-                    id="name"
-                    type="text"
-                    placeholder="As it should appear to your teacher"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
+                <>
+                  <div className="field">
+                    <label htmlFor="name">Your name</label>
+                    <input
+                      id="name"
+                      type="text"
+                      placeholder="As it should appear to your teacher"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="uucms">UUCMS Number</label>
+                    <input
+                      id="uucms"
+                      type="text"
+                      placeholder="e.g. U15BH26S0001"
+                      value={uucmsNo}
+                      onChange={(e) => setUucmsNo(e.target.value)}
+                      style={{ textTransform: 'uppercase' }}
+                    />
+                    {uucmsNo.trim() && (() => {
+                      const sems = getUucmsSemesters(uucmsNo);
+                      if (sems) {
+                        return (
+                          <div style={{ fontSize: 12, color: '#10B981', marginTop: 4, fontWeight: 500 }}>
+                            ✅ Semesters {sems.join(' & ')} detected
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div style={{ fontSize: 12, color: '#EF4444', marginTop: 4, fontWeight: 500 }}>
+                            ❌ Invalid UUCMS number or outside range (0001 - 0250)
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                </>
               )}
               <button className="btn btn-primary" type="submit" disabled={loading}>
                 {loading ? <><span className="spinner" /> Sending…</> : 'Send code →'}

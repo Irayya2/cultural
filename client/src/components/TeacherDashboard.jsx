@@ -11,6 +11,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [successMsg, setSuccessMsg] = useState('');
 
   const [title, setTitle]               = useState('');
+  const [semester, setSemester]         = useState(1);
   const [draftQuestions, setDraftQuestions] = useState([EMPTY_Q(), EMPTY_Q()]);
   const [creating, setCreating]         = useState(false);
 
@@ -108,8 +109,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     if (missingAnswer.length > 0) return setError(`Mark the correct answer for: "${missingAnswer[0].text.slice(0,60)}"`);
     setCreating(true);
     try {
-      await api.createQuiz(session.token, title.trim(), cleanQuestions);
-      showSuccess(`"${title.trim()}" is now live! 🎉`);
+      await api.createQuiz(session.token, title.trim(), cleanQuestions, semester);
+      showSuccess(`"${title.trim()}" (Semester ${semester}) is now live! 🎉`);
       setTitle(''); setDraftQuestions([EMPTY_Q(), EMPTY_Q()]); setAiQuestions([]);
       loadQuizzes();
     } catch (err) { setError(err.message); }
@@ -201,9 +202,33 @@ export default function TeacherDashboard({ session, onLogout }) {
                 {/* Left — manual builder */}
                 <div>
                   <form onSubmit={handleCreateQuiz}>
-                    <div className="field">
-                      <label>Quiz title</label>
-                      <input type="text" placeholder="e.g. Week 6 — Data Structures" value={title} onChange={e=>setTitle(e.target.value)} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 16, marginBottom: 16 }}>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Quiz title</label>
+                        <input type="text" placeholder="e.g. Week 6 — Data Structures" value={title} onChange={e=>setTitle(e.target.value)} />
+                      </div>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Semester</label>
+                        <select 
+                          value={semester} 
+                          onChange={e=>setSemester(Number(e.target.value))} 
+                          style={{ 
+                            padding: '10px', 
+                            borderRadius: '8px', 
+                            border: '1.5px solid var(--border)', 
+                            background: 'rgba(255,255,255,0.05)', 
+                            color: 'var(--text)', 
+                            width: '100%', 
+                            height: '42px', 
+                            marginTop: '2px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {[1,2,3,4,5,6].map(num => (
+                            <option key={num} value={num} style={{ background: '#1e1b4b', color: '#fff' }}>Semester {num}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <div style={{ marginBottom:14 }}>
@@ -346,7 +371,13 @@ export default function TeacherDashboard({ session, onLogout }) {
               {!loading && quizzes.map(q => (
                 <div className="quiz-card" key={q.id}>
                   <div>
-                    <div className="quiz-card-title">{q.title}{q.isActive && <span className="badge">● Live</span>}</div>
+                    <div className="quiz-card-title">
+                      {q.title}
+                      {q.isActive && <span className="badge">● Live</span>}
+                      {q.semester && (
+                        <span className="badge" style={{ marginLeft: 8, background: 'rgba(99,102,241,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(99,102,241,0.25)' }}>Sem {q.semester}</span>
+                      )}
+                    </div>
                     <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                   </div>
                   <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>View responses →</button>
@@ -438,6 +469,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       <thead>
                         <tr>
                           <th>Student</th>
+                          <th>UUCMS No</th>
                           <th>Score</th>
                           <th>Status</th>
                           <th>Switches</th>
@@ -451,6 +483,9 @@ export default function TeacherDashboard({ session, onLogout }) {
                             <td>
                               <strong style={{ color:'var(--text)', display:'block' }}>{a.studentName}</strong>
                               <span style={{ color:'var(--text-muted)', fontSize:11 }}>{a.studentEmail}</span>
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-soft)' }}>
+                              {a.studentUucmsNo || '—'}
                             </td>
                             <td>
                               {gradableTotal > 0 ? (

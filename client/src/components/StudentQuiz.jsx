@@ -32,8 +32,39 @@ const RULES = [
 
 function startedKey(quizId) { return `quiz-started-${quizId}`; }
 
+function getUucmsSemesters(uucmsNo) {
+  if (!uucmsNo) return null;
+  const clean = String(uucmsNo).trim().toUpperCase();
+  const match = clean.match(/^U15BH(24|25|26)S(\d{4})$/);
+  if (!match) return null;
+  
+  const batch = match[1]; // "24", "25", "26"
+  const number = parseInt(match[2], 10);
+  
+  if (number < 1 || number > 250) return null;
+  
+  if (batch === '26') return [1, 2];
+  if (batch === '25') return [3, 4];
+  if (batch === '24') return [5, 6];
+  
+  return null;
+}
+
 export default function StudentQuiz({ session, onLogout }) {
-  const [loading, setLoading]       = useState(true);
+  const uucmsNo = session.uucmsNo || '';
+  const eligibleSemesters = getUucmsSemesters(uucmsNo) || [];
+
+  const [selectedSemester, setSelectedSemester] = useState(() => {
+    const saved = window.sessionStorage.getItem(`selected_semester_${session.email}`);
+    if (saved) {
+      const savedNum = Number(saved);
+      if (eligibleSemesters.includes(savedNum)) return savedNum;
+    }
+    if (eligibleSemesters.length === 1) return eligibleSemesters[0];
+    return null;
+  });
+
+  const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
   const [quizSet, setQuizSet]       = useState(null);
   const [questions, setQuestions]   = useState([]);
@@ -79,9 +110,10 @@ export default function StudentQuiz({ session, onLogout }) {
   }, [session.token, showToast]);
 
   const loadQuiz = useCallback(async () => {
+    if (!selectedSemester) return;
     setLoading(true); setError('');
     try {
-      const data = await api.getActiveQuiz(session.token);
+      const data = await api.getActiveQuiz(session.token, selectedSemester);
       if (!data.quizSet) {
         setQuizSet(null);
       } else {
@@ -99,9 +131,13 @@ export default function StudentQuiz({ session, onLogout }) {
       }
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [session.token]);
+  }, [session.token, selectedSemester]);
 
-  useEffect(() => { loadQuiz(); }, [loadQuiz]);
+  useEffect(() => {
+    if (selectedSemester) {
+      loadQuiz();
+    }
+  }, [loadQuiz, selectedSemester]);
 
   // ── Malpractice listeners (only active after "Start Quiz") ────────────
   useEffect(() => {
@@ -130,6 +166,17 @@ export default function StudentQuiz({ session, onLogout }) {
     window.addEventListener('blur', handleBlur);
     return () => window.removeEventListener('blur', handleBlur);
   }, [reportMalpractice]);
+
+  function handleSemesterSelect(sem) {
+    setSelectedSemester(sem);
+    if (sem) {
+      window.sessionStorage.setItem(`selected_semester_${session.email}`, sem);
+    } else {
+      window.sessionStorage.removeItem(`selected_semester_${session.email}`);
+      setQuizSet(null);
+      setQuestions([]);
+    }
+  }
 
   function handleStartQuiz() {
     localStorage.setItem(startedKey(quizSet.id), '1');
@@ -176,6 +223,7 @@ export default function StudentQuiz({ session, onLogout }) {
   const progress      = questions.length ? (answeredCount / questions.length) * 100 : 0;
   const initials      = session.email ? session.email[0].toUpperCase() : '?';
   const currentQ      = questions[currentIdx];
+  const canChangeSemester = !started && !isLocked;
 
   return (
     <div className="quiz-shell">
@@ -194,11 +242,17 @@ export default function StudentQuiz({ session, onLogout }) {
         <div className="top-bar-user">
           <div className="avatar">{initials}</div>
           <div>
-            <div className="top-bar-role">Student</div>
+            <div className="top-bar-role">Student {uucmsNo ? `(${uucmsNo})` : ''}</div>
             <div className="top-bar-email">{session.email}</div>
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+          {selectedSemester && (
+            <span className="badge" style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--accent-bright)', border: '1px solid rgba(99,102,241,0.3)' }}>Sem {selectedSemester}</span>
+          )}
+          {canChangeSemester && eligibleSemesters.length > 1 && (
+            <button className="signout-link" onClick={() => handleSemesterSelect(null)}>Change Semester</button>
+          )}
           {quizSet && started && !isLocked && (
             <span style={{ fontSize:13, color:'var(--text-muted)' }}>{answeredCount}/{questions.length} answered</span>
           )}
@@ -224,12 +278,45 @@ export default function StudentQuiz({ session, onLogout }) {
 
         {!loading && error && <div className="card card--full"><div className="error-msg">⚠ {error}</div></div>}
 
-        {!loading && !quizSet && !error && (
+        {!loading && !selectedSemester && eligibleSemesters.length > 0 && (
+          <div className="card" style={{ maxWidth: 480, width: '100%', textAlign: 'center', padding: '24px 24px 30px' }}>
+            <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>🎓</span>
+            <h2 className="title" style={{ fontSize: 20, marginBottom: 8 }}>Select Your Semester</h2>
+            <p className="subtitle" style={{ marginBottom: 24, fontSize: 13.5 }}>
+              Your UUCMS number ({uucmsNo}) maps to multiple semesters. Please select the correct semester to proceed:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {eligibleSemesters.map((sem) => (
+                <button
+                  key={sem}
+                  className="btn btn-primary"
+                  style={{ padding: '14px', fontSize: 15, fontWeight: 700 }}
+                  onClick={() => handleSemesterSelect(sem)}
+                >
+                  Semester {sem}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loading && eligibleSemesters.length === 0 && (
+          <div className="card" style={{ maxWidth: 480, width: '100%', textAlign: 'center', padding: '24px 24px 30px' }}>
+            <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>⚠️</span>
+            <h2 className="title" style={{ fontSize: 20, color: 'var(--danger)', marginBottom: 8 }}>Access Denied</h2>
+            <p className="subtitle" style={{ marginBottom: 24, fontSize: 13.5 }}>
+              Your UUCMS number ({uucmsNo || 'None'}) is not recognized or does not map to semesters 1-6. Please log out and check your credentials.
+            </p>
+            <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
+          </div>
+        )}
+
+        {!loading && selectedSemester && !quizSet && !error && (
           <div className="card" style={{ maxWidth:480, width:'100%', padding:0 }}>
             <div className="no-quiz-card">
               <span className="no-quiz-icon">📭</span>
               <div className="no-quiz-title">No quiz right now</div>
-              <p className="no-quiz-sub">Your teacher hasn't posted this week's questions yet. Check back soon!</p>
+              <p className="no-quiz-sub">Your teacher hasn't posted this week's questions for Semester {selectedSemester} yet. Check back soon!</p>
               <button className="btn btn-ghost btn-sm" style={{ marginTop:20, width:'auto', padding:'10px 20px' }} onClick={loadQuiz}>Refresh</button>
             </div>
           </div>
