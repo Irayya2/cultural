@@ -230,8 +230,8 @@ export default function StudentQuiz({ session, onLogout }) {
       {/* Toast */}
       {toast && (
         <div className="toast" role="alert" style={{
-          borderColor: toast.type === 'danger' ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)',
-          color:       toast.type === 'danger' ? '#FCA5A5' : '#FDE68A',
+          borderColor: toast.type === 'danger' ? 'rgba(244,63,94,0.4)' : 'rgba(245,158,11,0.4)',
+          color:       toast.type === 'danger' ? 'var(--danger)' : 'var(--warn)',
         }}>
           {toast.msg}
         </div>
@@ -248,7 +248,7 @@ export default function StudentQuiz({ session, onLogout }) {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
           {selectedSemester && (
-            <span className="badge" style={{ background: 'rgba(99,102,241,0.2)', color: 'var(--accent-bright)', border: '1px solid rgba(99,102,241,0.3)' }}>Sem {selectedSemester}</span>
+            <span className="badge" style={{ background: 'rgba(56,182,255,0.2)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.3)' }}>Sem {selectedSemester}</span>
           )}
           {canChangeSemester && eligibleSemesters.length > 1 && (
             <button className="signout-link" onClick={() => handleSemesterSelect(null)}>Change Semester</button>
@@ -358,10 +358,10 @@ export default function StudentQuiz({ session, onLogout }) {
                         </div>
 
                         {/* Motivational message */}
-                        <div style={{ padding:'14px 18px', borderRadius:10, marginBottom:16, textAlign:'center', background: scorePct===100?'rgba(16,185,129,0.1)':scorePct>=80?'rgba(99,102,241,0.1)':scorePct>=60?'rgba(245,158,11,0.08)':scorePct>=40?'rgba(99,102,241,0.06)':'rgba(239,68,68,0.07)', border:`1px solid ${scorePct===100?'rgba(16,185,129,0.25)':scorePct>=80?'rgba(99,102,241,0.25)':scorePct>=60?'rgba(245,158,11,0.2)':scorePct>=40?'rgba(99,102,241,0.15)':'rgba(239,68,68,0.15)'}` }}>
+                        <div style={{ padding:'14px 18px', borderRadius:10, marginBottom:16, textAlign:'center', background: scorePct===100?'rgba(34,197,94,0.1)':scorePct>=80?'rgba(56,182,255,0.1)':scorePct>=60?'rgba(245,158,11,0.08)':scorePct>=40?'rgba(56,182,255,0.06)':'rgba(244,63,94,0.07)', border:`1px solid ${scorePct===100?'rgba(34,197,94,0.25)':scorePct>=80?'rgba(56,182,255,0.25)':scorePct>=60?'rgba(245,158,11,0.2)':scorePct>=40?'rgba(56,182,255,0.15)':'rgba(244,63,94,0.15)'}` }}>
                           {scorePct === 100 && <>
                             <div style={{ fontSize:22, marginBottom:6 }}>🏆</div>
-                            <div style={{ fontSize:15, fontWeight:700, color:'#6EE7B7', marginBottom:4 }}>Perfect score — you nailed it!</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:'var(--success)', marginBottom:4 }}>Perfect score — you nailed it!</div>
                             <div style={{ fontSize:13, color:'var(--text-soft)', lineHeight:1.55 }}>Outstanding! You got every single question right. Your hard work and focus really paid off today. Keep it up!</div>
                           </>}
                           {scorePct >= 80 && scorePct < 100 && <>
@@ -371,7 +371,7 @@ export default function StudentQuiz({ session, onLogout }) {
                           </>}
                           {scorePct >= 60 && scorePct < 80 && <>
                             <div style={{ fontSize:22, marginBottom:6 }}>👍</div>
-                            <div style={{ fontSize:15, fontWeight:700, color:'#FDE68A', marginBottom:4 }}>Good effort — you're on the right track!</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:'var(--warn)', marginBottom:4 }}>Good effort — you're on the right track!</div>
                             <div style={{ fontSize:13, color:'var(--text-soft)', lineHeight:1.55 }}>Not bad at all! You got more than half right. Review the ones you missed, understand where you went wrong, and you'll do even better next time.</div>
                           </>}
                           {scorePct >= 40 && scorePct < 60 && <>
@@ -381,7 +381,7 @@ export default function StudentQuiz({ session, onLogout }) {
                           </>}
                           {scorePct < 40 && <>
                             <div style={{ fontSize:22, marginBottom:6 }}>💪</div>
-                            <div style={{ fontSize:15, fontWeight:700, color:'#FCA5A5', marginBottom:4 }}>It's okay — every expert was once a beginner!</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:'var(--danger)', marginBottom:4 }}>It's okay — every expert was once a beginner!</div>
                             <div style={{ fontSize:13, color:'var(--text-soft)', lineHeight:1.55 }}>This quiz was tough, but that's how we grow. Go through each answer below carefully, ask your teacher for help on anything unclear, and come back stronger next time!</div>
                           </>}
                         </div>
@@ -393,21 +393,21 @@ export default function StudentQuiz({ session, onLogout }) {
                             const isCorrect = q.correctAnswer && studentAnswer === q.correctAnswer;
                             const isWrong   = q.correctAnswer && studentAnswer && studentAnswer !== q.correctAnswer;
                             return (
-                              <div key={q.id} style={{ padding:'10px 14px', borderRadius:8, background: isCorrect?'rgba(16,185,129,0.08)':isWrong?'rgba(239,68,68,0.08)':'rgba(255,255,255,0.03)', border:`1px solid ${isCorrect?'rgba(16,185,129,0.2)':isWrong?'rgba(239,68,68,0.15)':'var(--border)'}` }}>
+                              <div key={q.id} style={{ padding:'10px 14px', borderRadius:8, background: isCorrect?'rgba(34,197,94,0.08)':isWrong?'rgba(244,63,94,0.08)':'rgba(255,255,255,0.03)', border:`1px solid ${isCorrect?'rgba(34,197,94,0.2)':isWrong?'rgba(244,63,94,0.15)':'var(--border)'}` }}>
                                 <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
                                   <span style={{ fontSize:18, flexShrink:0 }}>{isCorrect ? '✅' : isWrong ? '❌' : '⬜'}</span>
                                   <div style={{ flex:1 }}>
                                     <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginBottom:4 }}>Q{i+1}. {q.text}</div>
                                     <div style={{ fontSize:12.5 }}>
                                       <span style={{ color:'var(--text-muted)' }}>Your answer: </span>
-                                      <span style={{ color: isCorrect?'#6EE7B7':isWrong?'#FCA5A5':'var(--text-muted)', fontWeight:500 }}>
+                                      <span style={{ color: isCorrect?'var(--success)':isWrong?'var(--danger)':'var(--text-muted)', fontWeight:500 }}>
                                         {studentAnswer || 'Not answered'}
                                       </span>
                                     </div>
                                     {isWrong && q.correctAnswer && (
                                       <div style={{ fontSize:12.5, marginTop:2 }}>
                                         <span style={{ color:'var(--text-muted)' }}>Correct: </span>
-                                        <span style={{ color:'#6EE7B7', fontWeight:500 }}>{q.correctAnswer}</span>
+                                        <span style={{ color:'var(--success)', fontWeight:500 }}>{q.correctAnswer}</span>
                                       </div>
                                     )}
                                   </div>
@@ -423,7 +423,7 @@ export default function StudentQuiz({ session, onLogout }) {
 
                     {/* gcc_code_zone branding footer */}
                     <div style={{ marginTop:24, paddingTop:16, borderTop:'1px solid var(--border)', width:'100%', textAlign:'center' }}>
-                      <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:99, background:'rgba(99,102,241,0.10)', border:'1px solid rgba(99,102,241,0.22)' }}>
+                      <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'8px 18px', borderRadius:99, background:'rgba(56,182,255,0.10)', border:'1px solid rgba(56,182,255,0.22)' }}>
                         <span style={{ fontSize:15 }}>⚡</span>
                         <span style={{ fontSize:12.5, fontWeight:700, color:'var(--accent-bright)', letterSpacing:'0.04em' }}>gcc_code_zone</span>
                         <span style={{ fontSize:12, color:'var(--text-muted)' }}>team</span>
@@ -449,7 +449,7 @@ export default function StudentQuiz({ session, onLogout }) {
                 </div>
 
                 {/* Quiz info strip */}
-                <div style={{ display:'flex', gap:12, marginBottom:24, padding:'12px 16px', background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10 }}>
+                <div style={{ display:'flex', gap:12, marginBottom:24, padding:'12px 16px', background:'rgba(56,182,255,0.08)', border:'1px solid rgba(56,182,255,0.2)', borderRadius:10 }}>
                   <div style={{ flex:1, textAlign:'center' }}>
                     <div style={{ fontSize:20, fontWeight:800, color:'var(--accent-bright)' }}>{questions.length}</div>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>Questions</div>
@@ -475,7 +475,7 @@ export default function StudentQuiz({ session, onLogout }) {
                 </div>
 
                 {/* Agreement + CTA */}
-                <div style={{ padding:'16px', background:'rgba(16,185,129,0.05)', border:'1px solid rgba(16,185,129,0.15)', borderRadius:10, marginBottom:16, textAlign:'center' }}>
+                <div style={{ padding:'16px', background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.15)', borderRadius:10, marginBottom:16, textAlign:'center' }}>
                   <p style={{ margin:'0 0 14px', fontSize:13, color:'var(--text-soft)', lineHeight:1.5 }}>
                     By clicking <strong style={{ color:'var(--text)' }}>Start Quiz</strong> you confirm you are the person logged in as <strong style={{ color:'var(--accent-bright)' }}>{session.email}</strong> and you will not attempt to cheat.
                   </p>

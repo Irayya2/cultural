@@ -140,16 +140,16 @@ export default function TeacherDashboard({ session, onLogout }) {
 
   // Score helpers for responses view
   function scoreColor(pct) {
-    if (pct >= 80) return '#6EE7B7';
-    if (pct >= 50) return '#FDE68A';
-    return '#FCA5A5';
+    if (pct >= 80) return 'var(--success)';
+    if (pct >= 50) return 'var(--warn)';
+    return 'var(--danger)';
   }
 
   const sortedAttempts = [...attempts].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const topScore = sortedAttempts[0]?.score ?? 0;
 
   return (
-    <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse 800px 500px at 60% -120px,rgba(99,102,241,0.16),transparent),var(--bg)', display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse 800px 500px at 60% -120px,rgba(56,182,255,0.16),transparent),var(--bg)', display:'flex', flexDirection:'column' }}>
 
       {/* Top Bar */}
       <div className="top-bar">
@@ -171,7 +171,7 @@ export default function TeacherDashboard({ session, onLogout }) {
             <div className="stat-value">{quizzes.length}</div>
             <div className="stat-label">Total quizzes</div>
           </div>
-          <div className="stat-card" style={{ borderColor:activeQuiz?'rgba(99,102,241,0.35)':undefined }}>
+          <div className="stat-card" style={{ borderColor:activeQuiz?'rgba(56,182,255,0.35)':undefined }}>
             <div className="stat-value" style={{ fontSize:activeQuiz?18:undefined, color:activeQuiz?'var(--accent-bright)':undefined }}>
               {activeQuiz ? '● Live' : '—'}
             </div>
@@ -225,7 +225,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                           }}
                         >
                           {[1,2,3,4,5,6].map(num => (
-                            <option key={num} value={num} style={{ background: '#1e1b4b', color: '#fff' }}>Semester {num}</option>
+                            <option key={num} value={num} style={{ background: 'rgba(7,15,28,0.95)', color: '#fff' }}>Semester {num}</option>
                           ))}
                         </select>
                       </div>
@@ -252,7 +252,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, paddingLeft:36, marginBottom:10 }}>
                             {LETTERS.map((letter, oi) => (
                               <div key={oi} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                                <span style={{ width:22, height:22, borderRadius:6, background:'rgba(99,102,241,0.15)', border:'1px solid rgba(99,102,241,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'var(--accent-bright)', flexShrink:0 }}>{letter}</span>
+                                <span style={{ width:22, height:22, borderRadius:6, background:'rgba(56,182,255,0.15)', border:'1px solid rgba(56,182,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'var(--accent-bright)', flexShrink:0 }}>{letter}</span>
                                 <input type="text" placeholder={`Option ${letter}`} value={q.options[oi]} onChange={e=>updateDraftOption(qi,oi,e.target.value)}
                                   style={{ flex:1, fontSize:13, padding:'7px 10px', background:'rgba(255,255,255,0.04)', border:'1px solid var(--border)', borderRadius:6, color:'var(--text)' }} />
                               </div>
@@ -275,8 +275,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                                     style={{
                                       padding:'5px 12px', borderRadius:6, fontSize:12.5, fontWeight:600,
                                       border: isSelected ? '1.5px solid var(--success)' : '1.5px solid var(--border)',
-                                      background: isSelected ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.04)',
-                                      color: isSelected ? '#6EE7B7' : optText ? 'var(--text-soft)' : 'var(--text-muted)',
+                                      background: isSelected ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
+                                      color: isSelected ? 'var(--success)' : optText ? 'var(--text-soft)' : 'var(--text-muted)',
                                       cursor: optText ? 'pointer' : 'not-allowed',
                                       opacity: optText ? 1 : 0.4,
                                       transition:'all 0.15s ease',
@@ -341,8 +341,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                               {obj.options.length > 0 && (
                                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
                                   {obj.options.map((opt, oi) => (
-                                    <span key={oi} style={{ fontSize:11.5, color: opt===obj.correctAnswer?'#6EE7B7':'var(--text-soft)', display:'flex', gap:5 }}>
-                                      <span style={{ fontWeight:700, color:opt===obj.correctAnswer?'#6EE7B7':'var(--accent-bright)', flexShrink:0 }}>
+                                    <span key={oi} style={{ fontSize:11.5, color: opt===obj.correctAnswer?'var(--success)':'var(--text-soft)', display:'flex', gap:5 }}>
+                                      <span style={{ fontWeight:700, color:opt===obj.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
                                         {opt===obj.correctAnswer ? '✓' : LETTERS[oi]+'.'}
                                       </span>
                                       {opt}
@@ -351,7 +351,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                                 </div>
                               )}
                               {obj.correctAnswer && (
-                                <div style={{ fontSize:11, color:'#6EE7B7', fontWeight:600 }}>✓ Correct: {obj.correctAnswer}</div>
+                                <div style={{ fontSize:11, color:'var(--success)', fontWeight:600 }}>✓ Correct: {obj.correctAnswer}</div>
                               )}
                             </div>
                           );
@@ -375,7 +375,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       {q.title}
                       {q.isActive && <span className="badge">● Live</span>}
                       {q.semester && (
-                        <span className="badge" style={{ marginLeft: 8, background: 'rgba(99,102,241,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(99,102,241,0.25)' }}>Sem {q.semester}</span>
+                        <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
                       )}
                     </div>
                     <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
@@ -418,7 +418,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       return (
                         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
                           {[
-                            { label:'Highest', value:`${topScore}/${gradableTotal}`, color:'#6EE7B7' },
+                            { label:'Highest', value:`${topScore}/${gradableTotal}`, color:'var(--success)' },
                             { label:'Class avg', value:avg!==null?`${avg}%`:'—', color: avg!=null?scoreColor(avg):'var(--text-muted)' },
                             { label:'Submitted', value:`${scored.length}/${sortedAttempts.length}`, color:'var(--accent-bright)' },
                           ].map(s => (
@@ -502,8 +502,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                               const isWrong   = q.correctAnswer && studentAns && studentAns !== q.correctAnswer;
                               return (
                                 <td key={q.id} style={{
-                                  background: isCorrect?'rgba(16,185,129,0.07)': isWrong?'rgba(239,68,68,0.07)':'transparent',
-                                  color: isCorrect?'#6EE7B7': isWrong?'#FCA5A5':'var(--text-soft)',
+                                  background: isCorrect?'rgba(34,197,94,0.07)': isWrong?'rgba(244,63,94,0.07)':'transparent',
+                                  color: isCorrect?'var(--success)': isWrong?'var(--danger)':'var(--text-soft)',
                                   fontWeight: isCorrect||isWrong ? 500 : 400,
                                 }}>
                                   {studentAns
@@ -523,13 +523,13 @@ export default function TeacherDashboard({ session, onLogout }) {
 
                   {/* Answer key */}
                   {selectedQuiz.questions.some(q=>q.correctAnswer) && (
-                    <div style={{ marginTop:20, padding:'16px 18px', background:'rgba(16,185,129,0.05)', border:'1px solid rgba(16,185,129,0.15)', borderRadius:10 }}>
-                      <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'#6EE7B7', marginBottom:12 }}>Answer Key</div>
+                    <div style={{ marginTop:20, padding:'16px 18px', background:'rgba(34,197,94,0.05)', border:'1px solid rgba(34,197,94,0.15)', borderRadius:10 }}>
+                      <div style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--success)', marginBottom:12 }}>Answer Key</div>
                       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
                         {selectedQuiz.questions.map((q,i) => (
                           <div key={q.id} style={{ fontSize:12.5, color:'var(--text-soft)' }}>
                             <span style={{ fontWeight:700, color:'var(--text)' }}>Q{i+1}.</span>{' '}
-                            <span style={{ color:'#6EE7B7' }}>{q.correctAnswer || <em style={{ color:'var(--text-muted)' }}>not set</em>}</span>
+                            <span style={{ color:'var(--success)' }}>{q.correctAnswer || <em style={{ color:'var(--text-muted)' }}>not set</em>}</span>
                           </div>
                         ))}
                       </div>

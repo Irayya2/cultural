@@ -170,13 +170,13 @@ export default function Login({ onLogin }) {
                       const sems = getUucmsSemesters(uucmsNo);
                       if (sems) {
                         return (
-                          <div style={{ fontSize: 12, color: '#10B981', marginTop: 4, fontWeight: 500 }}>
+                          <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4, fontWeight: 500 }}>
                             ✅ Semesters {sems.join(' & ')} detected
                           </div>
                         );
                       } else {
                         return (
-                          <div style={{ fontSize: 12, color: '#EF4444', marginTop: 4, fontWeight: 500 }}>
+                          <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, fontWeight: 500 }}>
                             ❌ Invalid UUCMS number or outside range (0001 - 0250)
                           </div>
                         );
