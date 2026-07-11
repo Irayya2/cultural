@@ -604,12 +604,30 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
     }
   }
 
+  const RESULTS_RELEASE_DELAY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+  const releaseTime = quizSet.createdAt ? quizSet.createdAt + RESULTS_RELEASE_DELAY_MS : 0;
+  const resultsReleased = Date.now() >= releaseTime;
+
   const questionsById = Object.fromEntries(quizSet.questions.map((q) => [q.id, q]));
   const orderedQuestions = attempt.question_order.map((qid) => questionsById[qid]).filter(Boolean);
 
+  // If student is still in progress OR results are not yet released, hide correct answers
+  let finalQuestions = orderedQuestions;
+  if (attempt.status === 'in_progress' || !resultsReleased) {
+    finalQuestions = orderedQuestions.map((q) => {
+      const { correctAnswer, ...rest } = q;
+      return rest;
+    });
+  }
+
   res.json({
-    quizSet: { id: quizSet.id, title: quizSet.title, timeLimitSec: quizSet.timeLimitSec || 72 },
-    questions: orderedQuestions,
+    quizSet: { 
+      id: quizSet.id, 
+      title: quizSet.title, 
+      timeLimitSec: quizSet.timeLimitSec || 72,
+      createdAt: quizSet.createdAt
+    },
+    questions: finalQuestions,
     answers: attempt.answers,
     tabSwitchCount: attempt.tab_switch_count,
     status: attempt.status,
