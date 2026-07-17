@@ -1,13 +1,16 @@
-// index.js
+// api/index.js
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const ExcelJS = require('exceljs');
 
-const dotenvPath = path.join(__dirname, '.env');
-if (fs.existsSync(dotenvPath) && process.env.NODE_ENV !== 'production') {
-  require('dotenv').config({ path: dotenvPath });
+// Load .env only in local development (not on Vercel where env vars are set in dashboard)
+if (process.env.NODE_ENV !== 'production') {
+  const dotenvPath = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(dotenvPath)) {
+    require('dotenv').config({ path: dotenvPath });
+  }
 }
 
 const { initDb, supabase } = require('./db');
@@ -26,9 +29,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 5000;
-
-const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+const PORT = process.env.PORT || 4000;
 
 // Comma-separated list of teacher emails allowed to log in as teacher.
 const TEACHER_EMAILS = (process.env.TEACHER_EMAILS || '')
@@ -689,16 +690,8 @@ app.post('/api/student/quiz/:quizId/submit', requireStudent, async (req, res) =>
   res.json({ ok: true });
 });
 
-// ---------- Serve built frontend in production ----------
-if (fs.existsSync(CLIENT_DIST)) {
-  app.use(express.static(CLIENT_DIST));
-  app.get('/{*splat}', (req, res) => {
-    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
-  });
-}
-
-// ---------- Start server ----------
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+// ---------- Start server for local development ----------
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   initDb().then(() => {
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
