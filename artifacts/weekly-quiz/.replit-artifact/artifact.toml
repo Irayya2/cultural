@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Weekly Quiz"
+version = "1.0.0"
+id = "artifacts/weekly-quiz"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19552
+
+[services.development]
+run = "pnpm --filter @workspace/weekly-quiz run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/weekly-quiz", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/weekly-quiz/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19552"
+BASE_PATH = "/"
