@@ -1,0 +1,36 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Local databases and runtime data
+server/data/db.json
+server/data/
+
+# Environment configurations (credentials)
+.env
+.env*.local
+client/.env
+client/.env*.local
+server/.env
+server/.env*.local
+
+# Production builds
+dist/
+dist-ssr/
+client/dist/
+
+# OS and Editor configurations
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
