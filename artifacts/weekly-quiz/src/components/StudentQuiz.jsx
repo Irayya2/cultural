@@ -197,8 +197,10 @@ export default function StudentQuiz({ session, onLogout }) {
     setSubmitting(true); setError('');
     try {
       await api.submitQuiz(session.token, quizSet.id);
-      setStatus('submitted');
       localStorage.removeItem(startedKey(quizSet.id));
+      // Re-fetch quiz data — backend now returns correctAnswer for submitted attempts,
+      // which lets the client compute and display the score breakdown immediately.
+      await loadQuiz();
     } catch (err) { setError(err.message); }
     finally { setSubmitting(false); }
   }
