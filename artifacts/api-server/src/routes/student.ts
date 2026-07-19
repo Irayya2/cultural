@@ -111,17 +111,16 @@ router.get('/student/quiz/active', requireStudent, async (req, res) => {
     }
   }
 
-  const RESULTS_RELEASE_DELAY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
-  const releaseTime = quizSet.createdAt ? quizSet.createdAt + RESULTS_RELEASE_DELAY_MS : 0;
-  const resultsReleased = Date.now() >= releaseTime;
-
   const questionsById = Object.fromEntries(quizSet.questions.map((q: any) => [q.id, q]));
   const orderedQuestions = attempt.question_order
     .map((qid: string) => questionsById[qid])
     .filter(Boolean);
 
+  // Strip correct answers only while the quiz is still in progress.
+  // Once submitted (any status other than in_progress), the student can see
+  // their score and per-question feedback immediately.
   let finalQuestions = orderedQuestions;
-  if (attempt.status === 'in_progress' || !resultsReleased) {
+  if (attempt.status === 'in_progress') {
     finalQuestions = orderedQuestions.map((q: any) => {
       const { correctAnswer, ...rest } = q;
       return rest;
