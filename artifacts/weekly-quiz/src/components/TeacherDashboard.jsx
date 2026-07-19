@@ -26,6 +26,16 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [aiError, setAiError]     = useState('');
   const [addedAll, setAddedAll]   = useState(false);
 
+  // ── Edit / Delete / Activate state ───────────────────────────────────
+  const [editingQuiz, setEditingQuiz]             = useState(null);
+  const [editTitle, setEditTitle]                 = useState('');
+  const [editSemester, setEditSemester]           = useState(1);
+  const [editDraftQuestions, setEditDraftQuestions] = useState([]);
+  const [editSaving, setEditSaving]               = useState(false);
+  const [deleteConfirm, setDeleteConfirm]         = useState(null); // quizId pending confirm
+  const [deleting, setDeleting]                   = useState(false);
+  const [activating, setActivating]               = useState(null); // quizId being activated
+
   const showSuccess = (msg) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 4000); };
 
   const loadQuizzes = useCallback(async () => {
@@ -134,6 +144,76 @@ export default function TeacherDashboard({ session, onLogout }) {
     } catch (err) { setError(err.message); }
   }
 
+  // ── Edit helpers ─────────────────────────────────────────────────────
+  function startEditing(quiz) {
+    setEditTitle(quiz.title);
+    setEditSemester(quiz.semester || 1);
+    setEditDraftQuestions(
+      quiz.questions.map(q => ({
+        id: q.id,
+        text: q.text,
+        options: q.options.length === 4 ? [...q.options] : [...q.options, '', '', '', ''].slice(0, 4),
+        correctAnswer: q.correctAnswer || '',
+      }))
+    );
+    setEditingQuiz(quiz);
+    setError('');
+  }
+
+  function updateEditText(i, v)      { setEditDraftQuestions(p => p.map((q,idx) => idx===i ? {...q, text:v} : q)); }
+  function updateEditOption(qi,oi,v) { setEditDraftQuestions(p => p.map((q,idx) => idx===qi ? {...q, options:q.options.map((o,oidx)=>oidx===oi?v:o)} : q)); }
+  function updateEditCorrect(qi,v)   { setEditDraftQuestions(p => p.map((q,idx) => idx===qi ? {...q, correctAnswer:v} : q)); }
+  function addEditRow()              { setEditDraftQuestions(p => [...p, { id:'', text:'', options:['','','',''], correctAnswer:'' }]); }
+  function removeEditRow(i)          { setEditDraftQuestions(p => p.filter((_,idx)=>idx!==i)); }
+
+  async function handleUpdateQuiz(e) {
+    e.preventDefault(); setError('');
+    const cleanQuestions = editDraftQuestions
+      .filter(q => q.text.trim())
+      .map(q => ({
+        id: q.id,
+        text: q.text.trim(),
+        options: q.options.map(o => o.trim()).filter(Boolean),
+        correctAnswer: q.correctAnswer.trim(),
+      }));
+    if (!editTitle.trim()) return setError('Quiz title is required.');
+    if (cleanQuestions.length === 0) return setError('Add at least one question.');
+    const missingOptions = cleanQuestions.filter(q => q.options.length < 2);
+    if (missingOptions.length > 0) return setError(`Add at least 2 options for: "${missingOptions[0].text.slice(0,60)}"`);
+    const missingAnswer = cleanQuestions.filter(q => !q.correctAnswer);
+    if (missingAnswer.length > 0) return setError(`Mark the correct answer for: "${missingAnswer[0].text.slice(0,60)}"`);
+
+    setEditSaving(true);
+    try {
+      await api.updateQuiz(session.token, editingQuiz.id, editTitle.trim(), cleanQuestions, editSemester);
+      showSuccess(`"${editTitle.trim()}" updated successfully ✅`);
+      setEditingQuiz(null);
+      loadQuizzes();
+    } catch (err) { setError(err.message); }
+    finally { setEditSaving(false); }
+  }
+
+  async function handleDeleteQuiz(quizId) {
+    setDeleting(true); setError('');
+    try {
+      await api.deleteQuiz(session.token, quizId);
+      showSuccess('Quiz deleted.');
+      setDeleteConfirm(null);
+      loadQuizzes();
+    } catch (err) { setError(err.message); }
+    finally { setDeleting(false); }
+  }
+
+  async function handleActivateQuiz(quizId) {
+    setActivating(quizId);
+    try {
+      await api.activateQuiz(session.token, quizId);
+      showSuccess('Quiz set as active for its semester ✅');
+      loadQuizzes();
+    } catch (err) { setError(err.message); }
+    finally { setActivating(null); }
+  }
+
   const initials    = session.email ? session.email[0].toUpperCase() : 'T';
   const activeQuiz  = quizzes.find(q => q.isActive);
   const filledCount = draftQuestions.filter(q => q.text.trim()).length;
@@ -186,7 +266,93 @@ export default function TeacherDashboard({ session, onLogout }) {
         {error      && <div className="error-msg">⚠ {error}</div>}
         {successMsg && <div className="success-msg">✅ {successMsg}</div>}
 
-        {!selectedQuiz ? (
+        {editingQuiz ? (
+          /* ── Edit quiz panel ── */
+          <div className="card" style={{ padding:'20px 24px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+              <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingQuiz(null); setError(''); }}>← Cancel</button>
+              <div>
+                <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>Edit quiz</div>
+                <div style={{ fontSize:12, color:'var(--text-muted)' }}>Changes take effect immediately for students</div>
+              </div>
+            </div>
+
+            <form onSubmit={handleUpdateQuiz}>
+              <div style={{ display:'grid', gridTemplateColumns:'3fr 1fr', gap:16, marginBottom:20 }}>
+                <div className="field" style={{ marginBottom:0 }}>
+                  <label>Quiz title</label>
+                  <input type="text" value={editTitle} onChange={e=>setEditTitle(e.target.value)} placeholder="Quiz title" />
+                </div>
+                <div className="field" style={{ marginBottom:0 }}>
+                  <label>Semester</label>
+                  <select value={editSemester} onChange={e=>setEditSemester(Number(e.target.value))}
+                    style={{ padding:'10px', borderRadius:'8px', border:'1.5px solid var(--border)', background:'rgba(255,255,255,0.05)', color:'var(--text)', width:'100%', height:'42px', marginTop:'2px', cursor:'pointer' }}>
+                    {[1,2,3,4,5,6].map(n => <option key={n} value={n} style={{ background:'rgba(7,15,28,0.95)', color:'#fff' }}>Semester {n}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginBottom:16 }}>
+                <label style={{ fontSize:12.5, fontWeight:600, color:'var(--text-soft)', display:'block', marginBottom:12 }}>
+                  Questions ({editDraftQuestions.filter(q=>q.text.trim()).length} filled)
+                </label>
+
+                {editDraftQuestions.map((q, qi) => (
+                  <div key={qi} style={{ marginBottom:16, background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 14px 12px' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:10 }}>
+                      <span className="q-num" style={{ paddingTop:10 }}>{qi+1}</span>
+                      <input type="text" placeholder={`Question ${qi+1}`} value={q.text} onChange={e=>updateEditText(qi,e.target.value)}
+                        style={{ flex:1, fontSize:14, padding:'10px 12px', background:'rgba(255,255,255,0.05)', border:'1.5px solid var(--border)', borderRadius:8, color:'var(--text)' }} />
+                      {editDraftQuestions.length > 1 && (
+                        <button type="button" className="btn btn-danger btn-icon" onClick={()=>removeEditRow(qi)} title="Remove" style={{ fontSize:16, marginTop:2 }}>×</button>
+                      )}
+                    </div>
+
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, paddingLeft:36, marginBottom:10 }}>
+                      {LETTERS.map((letter, oi) => (
+                        <div key={oi} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <span style={{ width:22, height:22, borderRadius:6, background:'rgba(56,182,255,0.15)', border:'1px solid rgba(56,182,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'var(--accent-bright)', flexShrink:0 }}>{letter}</span>
+                          <input type="text" placeholder={`Option ${letter}`} value={q.options[oi]||''} onChange={e=>updateEditOption(qi,oi,e.target.value)}
+                            style={{ flex:1, fontSize:13, padding:'7px 10px', background:'rgba(255,255,255,0.04)', border:'1px solid var(--border)', borderRadius:6, color:'var(--text)' }} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ paddingLeft:36 }}>
+                      <div style={{ fontSize:11.5, fontWeight:600, color:'var(--text-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em' }}>✓ Correct answer</div>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                        {LETTERS.map((letter, oi) => {
+                          const optText = q.options[oi]?.trim();
+                          const isSelected = q.correctAnswer === optText && optText;
+                          return (
+                            <button key={oi} type="button"
+                              onClick={() => optText && updateEditCorrect(qi, optText)}
+                              disabled={!optText}
+                              style={{ padding:'5px 12px', borderRadius:6, fontSize:12.5, fontWeight:600, border:isSelected?'1.5px solid var(--success)':'1.5px solid var(--border)', background:isSelected?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.04)', color:isSelected?'var(--success)':optText?'var(--text-soft)':'var(--text-muted)', cursor:optText?'pointer':'not-allowed', opacity:optText?1:0.4, transition:'all 0.15s ease' }}>
+                              {isSelected && '✓ '}{letter}{optText ? ` — ${optText.length>14?optText.slice(0,14)+'…':optText}` : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <button type="button" className="btn btn-ghost btn-sm" onClick={addEditRow} style={{ marginTop:2 }}>+ Add question</button>
+              </div>
+
+              <div style={{ display:'flex', gap:12 }}>
+                <button className="btn btn-primary" type="submit" disabled={editSaving} style={{ flex:1 }}>
+                  {editSaving ? <><span className="spinner"/>Saving…</> : '💾 Save changes'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={()=>{ setEditingQuiz(null); setError(''); }} style={{ width:'auto', padding:'12px 20px' }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+
+        ) : !selectedQuiz ? (
           <>
             {/* ── Quiz creator ── */}
             <div className="card" style={{ padding:0, marginBottom:24 }}>
@@ -369,18 +535,54 @@ export default function TeacherDashboard({ session, onLogout }) {
               {loading && <div style={{ display:'flex', alignItems:'center', gap:10, color:'var(--text-muted)', padding:'12px 0' }}><span className="spinner spinner-dark" style={{ width:16,height:16,borderWidth:2 }}/> Loading…</div>}
               {!loading && quizzes.length === 0 && <div className="empty-state"><span className="empty-icon">📭</span>No quizzes posted yet.</div>}
               {!loading && quizzes.map(q => (
-                <div className="quiz-card" key={q.id}>
-                  <div>
-                    <div className="quiz-card-title">
-                      {q.title}
-                      {q.isActive && <span className="badge">● Live</span>}
-                      {q.semester && (
-                        <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
+                <div key={q.id} style={{ marginBottom:10 }}>
+                  <div className="quiz-card" style={{ flexWrap:'wrap', gap:10, alignItems:'flex-start' }}>
+                    {/* Info */}
+                    <div style={{ flex:1, minWidth:160 }}>
+                      <div className="quiz-card-title" style={{ flexWrap:'wrap', gap:6 }}>
+                        {q.title}
+                        {q.isActive && <span className="badge">● Live</span>}
+                        {q.semester && (
+                          <span className="badge" style={{ background:'rgba(56,182,255,0.15)', color:'var(--accent-bright)', border:'1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
+                        )}
+                      </div>
+                      <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap', flexShrink:0 }}>
+                      {/* View responses */}
+                      <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>📊 Responses</button>
+
+                      {/* Set active (only if not already live) */}
+                      {!q.isActive && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color:'var(--success)', borderColor:'rgba(34,197,94,0.3)' }}
+                          disabled={activating === q.id}
+                          onClick={()=>handleActivateQuiz(q.id)}
+                        >
+                          {activating === q.id ? <span className="spinner spinner-dark" style={{ width:12,height:12,borderWidth:2 }}/> : '▶ Set active'}
+                        </button>
+                      )}
+
+                      {/* Edit */}
+                      <button className="btn btn-ghost btn-sm" onClick={()=>startEditing(q)}>✏️ Edit</button>
+
+                      {/* Delete */}
+                      {deleteConfirm === q.id ? (
+                        <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <span style={{ fontSize:12, color:'var(--danger)', fontWeight:600 }}>Delete?</span>
+                          <button className="btn btn-danger btn-sm" disabled={deleting} onClick={()=>handleDeleteQuiz(q.id)}>
+                            {deleting ? <span className="spinner" style={{ width:12,height:12,borderWidth:2 }}/> : 'Yes'}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={()=>setDeleteConfirm(null)}>No</button>
+                        </span>
+                      ) : (
+                        <button className="btn btn-danger btn-sm" onClick={()=>setDeleteConfirm(q.id)}>🗑 Delete</button>
                       )}
                     </div>
-                    <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>View responses →</button>
                 </div>
               ))}
             </div>

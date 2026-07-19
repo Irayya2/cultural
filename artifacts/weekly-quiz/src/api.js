@@ -54,6 +54,12 @@ export const api = {
   // teacher
   createQuiz: (token, title, questions, semester) =>
     request('/api/teacher/quiz', { method: 'POST', token, body: { title, questions, semester } }),
+  updateQuiz: (token, quizId, title, questions, semester) =>
+    request(`/api/teacher/quiz/${quizId}`, { method: 'PUT', token, body: { title, questions, semester } }),
+  deleteQuiz: (token, quizId) =>
+    request(`/api/teacher/quiz/${quizId}`, { method: 'DELETE', token }),
+  activateQuiz: (token, quizId) =>
+    request(`/api/teacher/quiz/${quizId}/activate`, { method: 'PATCH', token }),
   listQuizzes: (token) => request('/api/teacher/quiz', { token }),
   getAttempts: (token, quizId) => request(`/api/teacher/quiz/${quizId}/attempts`, { token }),
   resetAttempt: (token, quizId, studentId) =>

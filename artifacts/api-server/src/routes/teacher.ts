@@ -168,6 +168,96 @@ router.post('/teacher/generate-questions', requireTeacher, async (req, res) => {
   }
 });
 
+// PUT /api/teacher/quiz/:quizId  — edit title, semester, questions
+router.put('/teacher/quiz/:quizId', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+  const { title, questions, semester } = req.body;
+
+  if (!title || !Array.isArray(questions) || questions.length === 0) {
+    res.status(400).json({ error: 'Title and at least one question are required' });
+    return;
+  }
+
+  const semesterNum = Number(semester);
+  if (!semester || isNaN(semesterNum) || semesterNum < 1 || semesterNum > 6) {
+    res.status(400).json({ error: 'Valid Semester (1 to 6) is required' });
+    return;
+  }
+
+  const { data: existing } = await supabase
+    .from('quiz_sets').select('id').eq('id', quizId).limit(1);
+  if (!existing || existing.length === 0) {
+    res.status(404).json({ error: 'Quiz not found' });
+    return;
+  }
+
+  // Preserve existing question IDs so saved student answers remain valid.
+  // New questions (no id) get a fresh UUID.
+  const normalizedQuestions = questions
+    .map((q: any) => {
+      const norm = normalizeQuizQuestion(q, 72);
+      return { ...norm, id: typeof q.id === 'string' && q.id ? q.id : uuidv4() };
+    })
+    .filter((q) => q.text)
+    .map((q) => ({
+      id: q.id,
+      text: q.text,
+      options: q.options,
+      correctAnswer: q.correctAnswer || '',
+      timeLimitSec: q.timeLimitSec || 72,
+    }));
+
+  const { error } = await supabase
+    .from('quiz_sets')
+    .update({ title, semester: semesterNum, questions: normalizedQuestions })
+    .eq('id', quizId);
+
+  if (error) {
+    req.log.error({ err: error }, 'Update quiz error');
+    res.status(500).json({ error: 'Failed to update quiz' });
+    return;
+  }
+
+  const { data: updated } = await supabase
+    .from('quiz_sets').select('*').eq('id', quizId).limit(1);
+  res.json({ ok: true, quizSet: mapQuizSet(updated![0]) });
+});
+
+// DELETE /api/teacher/quiz/:quizId
+router.delete('/teacher/quiz/:quizId', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+
+  // Remove attempts first to satisfy any FK constraint
+  await supabase.from('attempts').delete().eq('quiz_set_id', quizId);
+
+  const { error } = await supabase.from('quiz_sets').delete().eq('id', quizId);
+  if (error) {
+    req.log.error({ err: error }, 'Delete quiz error');
+    res.status(500).json({ error: 'Failed to delete quiz' });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
+// PATCH /api/teacher/quiz/:quizId/activate — make this quiz the active one for its semester
+router.patch('/teacher/quiz/:quizId/activate', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+
+  const { data: existing } = await supabase
+    .from('quiz_sets').select('id, semester').eq('id', quizId).limit(1);
+  if (!existing || existing.length === 0) {
+    res.status(404).json({ error: 'Quiz not found' });
+    return;
+  }
+
+  const { semester } = existing[0];
+  await supabase.from('quiz_sets').update({ is_active: false }).eq('semester', semester);
+  await supabase.from('quiz_sets').update({ is_active: true }).eq('id', quizId);
+
+  res.json({ ok: true });
+});
+
 // GET /api/teacher/quiz
 router.get('/teacher/quiz', requireTeacher, async (req, res) => {
   const { data: quizSets, error } = await supabase
