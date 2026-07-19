@@ -35,15 +35,19 @@
 
 html, body, #root {
   min-height: 100vh;
+  min-height: 100dvh; /* mobile-safe: shrinks when address bar hides */
   height: 100%;
 }
 
 body {
   font-family: var(--font);
-  background: var(--page-bg);
+  /* Always dark — prevents light flash on mobile before bg image loads */
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent iOS rubber-band scroll from showing white edges */
+  overscroll-behavior: none;
 }
 
 button { font-family: inherit; cursor: pointer; }
@@ -99,21 +103,31 @@ input, textarea, select { font-family: inherit; }
 /* ─── App Shell ─── */
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 20px 16px;
   position: relative;
-  overflow: hidden;
-  background: url('/bg.png') center/cover fixed no-repeat,
+  /* scroll instead of fixed — background-attachment:fixed is broken on iOS/Android */
+  background: url('/bg.png') center/cover scroll no-repeat,
               radial-gradient(ellipse 800px 600px at 60% -100px, rgba(56,182,255,0.16), transparent),
               radial-gradient(ellipse 600px 500px at -10% 80%, rgba(56,182,255,0.08), transparent),
-              linear-gradient(180deg, var(--page-bg) 0%, var(--page-bg2) 100%);
+              linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+}
+
+/* On larger screens where fixed attachment works, restore it */
+@media (min-width: 768px) and (hover: hover) {
+  .app-shell {
+    background-attachment: fixed, scroll, scroll, scroll;
+    padding: 24px;
+    overflow: hidden;
+  }
 }
 
 .app-shell::before {
   content: '';
-  position: fixed;
+  position: absolute;
   inset: 0;
   background-image:
     radial-gradient(circle at 20% 80%, rgba(56,182,255,0.06) 0%, transparent 40%),
@@ -781,6 +795,7 @@ p.subtitle {
 /* ─── Student Quiz ─── */
 .quiz-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(ellipse 700px 500px at 50% -100px, rgba(56,182,255,0.18), transparent),
     var(--bg);
@@ -1132,4 +1147,106 @@ table.responses tr:hover td { background: rgba(255,255,255,0.02); }
   height: 1px;
   background: var(--border);
   margin: 24px 0;
+}
+
+/* ══════════════════════════════════════════════
+   MOBILE / SMALL SCREEN OVERRIDES (≤ 480px)
+   Fixes white-flash, layout overflow, padding
+   ══════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  /* Shell containers */
+  .app-shell {
+    padding: 12px;
+    align-items: flex-start;
+    padding-top: env(safe-area-inset-top, 16px);
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+
+  /* Login card */
+  .card--narrow {
+    padding: 24px 18px;
+  }
+  .card--full {
+    padding: 20px 16px;
+  }
+
+  /* Title / heading shrink */
+  h1.title { font-size: 22px; }
+  .subtitle { font-size: 13px; }
+
+  /* Quiz shell top-bar */
+  .top-bar { padding: 12px 14px; }
+
+  /* Quiz main — reduce padding so card fills the screen */
+  .quiz-main {
+    padding: 12px 10px;
+    align-items: flex-start;
+  }
+
+  /* Question card fills full width */
+  .question-card {
+    max-width: 100%;
+  }
+
+  /* Inner card content */
+  .question-body {
+    padding: 18px 14px;
+  }
+
+  .question-text {
+    font-size: 16px;
+    margin-bottom: 18px;
+  }
+
+  /* Option buttons — bigger tap targets */
+  .option-btn {
+    padding: 12px 14px;
+    font-size: 14px;
+    gap: 10px;
+  }
+
+  /* Navigation row */
+  .quiz-nav {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Banner locked (submit/result screen) */
+  .banner-locked {
+    padding: 20px 14px;
+  }
+
+  .banner-locked-icon { font-size: 32px; }
+
+  /* No-quiz card */
+  .no-quiz-card {
+    padding: 40px 20px;
+  }
+
+  /* Teacher dashboard */
+  .top-bar { padding: 12px 14px; }
+  .dash-body { padding: 14px; }
+  .dash-grid { grid-template-columns: 1fr; gap: 16px; }
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Make table scroll on tiny screens */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Tabs / role selector */
+  .tab-group { gap: 4px; }
+
+  /* Prevent horizontal scroll bleed */
+  body { overflow-x: hidden; }
+}
+
+/* Notch / safe-area support for all sizes */
+@supports (padding: env(safe-area-inset-top)) {
+  .app-shell {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .quiz-shell .top-bar {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
 }
