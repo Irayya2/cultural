@@ -1,7 +1,7 @@
 {
   "name": "weekly-quiz-app",
   "version": "1.0.0",
-  "description": "Weekly Quiz App - Client & Server merged for Vercel and Render deployment",
+  "description": "Weekly Quiz App - Client & Server merged for Vercel",
   "scripts": {
     "dev": "concurrently \"vite\" \"node api/index.js\"",
     "build": "vite build",
