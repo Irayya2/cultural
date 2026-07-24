@@ -129,11 +129,12 @@ export default function StudentQuiz({ session, onLogout }) {
       const left = Math.max(0, 3 - res.tabSwitchCount);
       if (res.status === 'auto_submitted') {
         showToast('⛔ Quiz auto-submitted — 3 malpractice actions detected.', 'danger');
+        loadQuiz();
       } else {
         showToast(`🚨 ${reason} detected — ⚠ ${left} strike${left !== 1 ? 's' : ''} left before auto-submit`, 'warn');
       }
     } catch (err) { console.error('Malpractice report failed:', err.message); }
-  }, [session.token, showToast]);
+  }, [session.token, showToast, loadQuiz]);
 
   const loadQuiz = useCallback(async () => {
     if (!selectedSemester) return;
@@ -238,6 +239,7 @@ export default function StudentQuiz({ session, onLogout }) {
       await api.submitQuiz(session.token, quizSet.id);
       setStatus('submitted');
       localStorage.removeItem(startedKey(quizSet.id));
+      await loadQuiz();
       loadHistory();
     } catch (err) { setError(err.message); }
     finally { setSubmitting(false); }
