@@ -52,7 +52,7 @@ function getRollNoSemesters(uucmsNo) {
 
 function getWeeklyInterval(createdAt) {
   const startDate = new Date('2026-07-19T00:00:00');
-  const d = new Date(createdAt);
+  const d = createdAt ? new Date(createdAt) : new Date();
   const diffTime = d.getTime() - startDate.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
@@ -377,6 +377,9 @@ export default function StudentQuiz({ session, onLogout }) {
                       <div className="banner-locked danger">
                         <span className="banner-locked-icon">⛔</span>
                         <strong style={{ fontSize: 18 }}>Quiz auto-submitted</strong>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
+                          {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                        </div>
                         <p>Your answers were automatically submitted after 3 malpractice detections.</p>
                         {scorePct !== null && (
                           <div style={{ marginTop: 16, padding: '14px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: 10, textAlign: 'center' }}>
@@ -390,6 +393,9 @@ export default function StudentQuiz({ session, onLogout }) {
                       <div className="banner-locked success">
                         <span className="banner-locked-icon">{scorePct !== null ? scoreEmoji(scorePct) : '✅'}</span>
                         <strong style={{ fontSize: 20 }}>Quiz submitted!</strong>
+                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 12 }}>
+                          {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                        </div>
 
                         {scorePct !== null && (
                           <div style={{ width: '100%', marginTop: 8 }}>

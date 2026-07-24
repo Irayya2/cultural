@@ -7,7 +7,7 @@ const EMPTY_Q = () => ({ text: '', options: ['', '', '', ''], correctAnswer: '' 
 
 function getWeeklyInterval(createdAt) {
   const startDate = new Date('2026-07-19T00:00:00');
-  const d = new Date(createdAt);
+  const d = createdAt ? new Date(createdAt) : new Date();
   const diffTime = d.getTime() - startDate.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
@@ -43,6 +43,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [attempts, setAttempts]         = useState([]);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const selectedWeekInfo = selectedQuiz?.createdAt ? getWeeklyInterval(selectedQuiz.createdAt) : null;
 
   const [aiTopic, setAiTopic]     = useState('');
   const [aiCount, setAiCount]     = useState(5);
@@ -287,7 +288,8 @@ export default function TeacherDashboard({ session, onLogout }) {
       options: q.options.map(o=>o.trim()).filter(Boolean),
       correctAnswer: q.correctAnswer.trim(),
     }));
-    if (!title.trim()) return setError('Give this quiz a title.');
+    const currentWeek = getWeeklyInterval(Date.now());
+    const finalTitle = title.trim() || `Week ${currentWeek.weekNum} Quiz (${currentWeek.rangeStr})`;
     if (cleanQuestions.length === 0) return setError('Add at least one question.');
     const missingOptions = cleanQuestions.filter(q=>q.options.length < 2);
     if (missingOptions.length > 0) return setError(`Add at least 2 options for: "${missingOptions[0].text.slice(0,60)}"`);
@@ -295,8 +297,8 @@ export default function TeacherDashboard({ session, onLogout }) {
     if (missingAnswer.length > 0) return setError(`Mark the correct answer for: "${missingAnswer[0].text.slice(0,60)}"`);
     setCreating(true);
     try {
-      await api.createQuiz(session.token, title.trim(), cleanQuestions, semester);
-      showSuccess(`"${title.trim()}" (Semester ${semester}) is now live! 🎉`);
+      await api.createQuiz(session.token, finalTitle, cleanQuestions, semester);
+      showSuccess(`"${finalTitle}" (Semester ${semester}) is now live! 🎉`);
       setTitle(''); setDraftQuestions([EMPTY_Q(), EMPTY_Q()]); setAiQuestions([]);
       loadQuizzes();
     } catch (err) { setError(err.message); }
@@ -409,7 +411,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 16, marginBottom: 16 }}>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label>Quiz title</label>
-                        <input type="text" placeholder="e.g. Week 6 — Data Structures" value={title} onChange={e=>setTitle(e.target.value)} />
+                        <input type="text" placeholder={`Default: Week ${getWeeklyInterval(Date.now()).weekNum} (${getWeeklyInterval(Date.now()).rangeStr})`} value={title} onChange={e=>setTitle(e.target.value)} />
                       </div>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label>Semester</label>
@@ -735,8 +737,12 @@ export default function TeacherDashboard({ session, onLogout }) {
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
               <button className="btn btn-ghost btn-sm" onClick={()=>setSelectedQuiz(null)}>← Back</button>
               <div>
-                <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>{selectedQuiz.title}</div>
-                <div style={{ fontSize:12, color:'var(--text-muted)' }}>Results &amp; responses</div>
+                <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>
+                  {selectedWeekInfo ? `Week ${selectedWeekInfo.weekNum} (${selectedWeekInfo.rangeStr}) · ` : ''}{selectedQuiz.title}
+                </div>
+                <div style={{ fontSize:12, color:'var(--text-muted)' }}>
+                  {selectedQuiz.createdAt ? `Posted on ${new Date(selectedQuiz.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ` : ''}Results &amp; responses
+                </div>
               </div>
             </div>
 
