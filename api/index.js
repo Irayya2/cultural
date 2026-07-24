@@ -718,16 +718,12 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
     }).eq('id', attempt.id);
   }
 
-  const RESULTS_RELEASE_DELAY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
-  const releaseTime = quizSet.createdAt ? quizSet.createdAt + RESULTS_RELEASE_DELAY_MS : 0;
-  const resultsReleased = Date.now() >= releaseTime;
-
   const questionsById = Object.fromEntries(quizSet.questions.map((q) => [q.id, q]));
   const orderedQuestions = attempt.question_order.map((qid) => questionsById[qid]).filter(Boolean);
 
-  // If student is still in progress OR results are not yet released, hide correct answers
+  // If student is still in progress, hide correct answers
   let finalQuestions = orderedQuestions;
-  if (attempt.status === 'in_progress' || !resultsReleased) {
+  if (attempt.status === 'in_progress') {
     finalQuestions = orderedQuestions.map((q) => {
       const { correctAnswer, ...rest } = q;
       return rest;

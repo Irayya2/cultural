@@ -370,60 +370,8 @@ export default function StudentQuiz({ session, onLogout }) {
 
           {!loading && quizSet && (
             isLocked ? (
-              !resultsReleased ? (
-                /* ── Quiz submitted but results not yet released ── */
-                <div className="question-card" style={{ maxWidth: 540, width: '100%' }}>
-                  <div className="question-body" style={{ textAlign: 'center', padding: '32px 24px', gap: 0 }}>
-                    <span style={{ fontSize: 48, display: 'block', marginBottom: 16 }}>🔒</span>
-                    <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 8, margin: 0 }}>
-                      {status === 'auto_submitted' ? 'Quiz Auto-Submitted' : 'Quiz Submitted!'}
-                    </h2>
-                    <p style={{ color: 'var(--text-soft)', fontSize: 13.5, lineHeight: 1.55, maxWidth: 420, margin: '8px auto 24px' }}>
-                      {status === 'auto_submitted'
-                        ? 'Your attempt was auto-submitted due to malpractice detection. Your answers are registered.'
-                        : 'Great job! Your responses have been successfully recorded.'}
-                    </p>
-
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '14px 18px',
-                      background: 'rgba(56, 182, 255, 0.08)',
-                      border: '1px solid rgba(56, 182, 255, 0.22)',
-                      borderRadius: 12,
-                      textAlign: 'left',
-                      maxWidth: '100%',
-                      marginBottom: 16
-                    }}>
-                      <span style={{ fontSize: 24 }}>📅</span>
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Next Quiz</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-bright)' }}>
-                          {new Date(releaseTime).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 1 }}>
-                          At {new Date(releaseTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5, maxWidth: 420, margin: '12px auto 0' }}>
-                      To ensure class-wide integrity, detailed scores, performance feedback, and the correct answers will be released once all students have completed the quiz.
-                    </p>
-
-                    <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid var(--border)', width: '100%', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 99, background: 'rgba(56, 182, 255, 0.08)', border: '1px solid rgba(56, 182, 255, 0.18)' }}>
-                        <span style={{ fontSize: 14 }}>⚡</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-bright)', letterSpacing: '0.04em' }}>gcc_code_zone</span>
-                        <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>team</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* ── Submitted / auto-submitted result (released) ── */
-                <div className="question-card">
+              /* ── Submitted / auto-submitted result ── */
+              <div className="question-card">
                   <div className="question-body">
                     {status === 'auto_submitted' ? (
                       <div className="banner-locked danger">
@@ -532,7 +480,6 @@ export default function StudentQuiz({ session, onLogout }) {
                     )}
                   </div>
                 </div>
-              )
             ) : !started ? (
               /* ── Instructions page ── */
               <div className="question-card" style={{ maxWidth: 560, width: '100%' }}>
