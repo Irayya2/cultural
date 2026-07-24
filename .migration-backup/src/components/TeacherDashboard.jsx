@@ -1,8 +1,33 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import mammoth from 'mammoth';
 import { api } from '../api';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 const EMPTY_Q = () => ({ text: '', options: ['', '', '', ''], correctAnswer: '' });
+
+function getWeeklyInterval(createdAt) {
+  const startDate = new Date('2026-07-19T00:00:00');
+  const d = new Date(createdAt);
+  const diffTime = d.getTime() - startDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { weekNum: 1, rangeStr: "Jul 19, 2026 - Jul 25, 2026" };
+  }
+  
+  const weekNum = Math.floor(diffDays / 7) + 1;
+  const weekStart = new Date(startDate.getTime() + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
+  const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+  
+  const format = (date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  
+  return {
+    weekNum,
+    rangeStr: `${format(weekStart)} - ${format(weekEnd)}`
+  };
+}
 
 export default function TeacherDashboard({ session, onLogout }) {
   const [quizzes, setQuizzes]     = useState([]);
@@ -25,6 +50,15 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [aiQuestions, setAiQuestions] = useState([]);
   const [aiError, setAiError]     = useState('');
   const [addedAll, setAddedAll]   = useState(false);
+
+  // ── Import from file state ────────────────────────────────────────────
+  const [rightTab, setRightTab]           = useState('ai'); // 'ai' | 'import'
+  const [importedQuestions, setImportedQuestions] = useState([]);
+  const [importError, setImportError]     = useState('');
+  const [importing, setImporting]         = useState(false);
+  const [importAddedAll, setImportAddedAll] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const fileInputRef = useRef(null);
 
   const showSuccess = (msg) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 4000); };
 
@@ -83,6 +117,158 @@ export default function TeacherDashboard({ session, onLogout }) {
     setAddedAll(true);
   }
 
+  // ── File import helpers ───────────────────────────────────────────────
+  function parseQuestionsFromText(text) {
+    const lines = text.split(/\r?\n/);
+    const questions = [];
+    let current = null;
+
+    // Patterns
+    const questionStartRe = /^(?:Q(?:uestion)?\s*\.?\s*)?(?:\d+)[.):\s]+(.+)/i;
+    const optionRe = /^\s*(?:[(]?([A-Da-d])[.)\s]|[(]([A-Da-d])[)])\s*[-–]?\s*(.+)/;
+    const answerRe = /^\s*(?:ans(?:wer)?|correct(?:\s+ans(?:wer)?)?)[:\s]+([A-Da-d](?:[.)\s].*)?$|.*)/i;
+    const starredOptionRe = /^\s*[*✓►>]\s*(?:[(]?([A-Da-d])[.)\s])?\s*(.+)/;
+
+    function saveCurrentQuestion() {
+      if (current && current.text.trim()) {
+        questions.push({ ...current });
+      }
+      current = null;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const line = raw.trim();
+      if (!line) continue;
+
+      // Check if this line is a new question
+      const qMatch = line.match(questionStartRe);
+      if (qMatch) {
+        saveCurrentQuestion();
+        current = { text: qMatch[1].trim(), options: [], correctAnswer: '' };
+        continue;
+      }
+
+      if (!current) continue;
+
+      // Starred / marked option (correct answer hint)
+      const starMatch = line.match(starredOptionRe);
+      if (starMatch) {
+        const optText = (starMatch[2] || '').trim();
+        if (optText) {
+          current.options.push(optText);
+          current.correctAnswer = optText;
+        }
+        continue;
+      }
+
+      // Regular option line
+      const optMatch = line.match(optionRe);
+      if (optMatch) {
+        const letter = (optMatch[1] || optMatch[2] || '').toUpperCase();
+        const optText = (optMatch[3] || '').trim();
+        if (optText) {
+          // Slot into A/B/C/D index to preserve order
+          const idx = 'ABCD'.indexOf(letter);
+          if (idx !== -1) current.options[idx] = optText;
+          else current.options.push(optText);
+        }
+        continue;
+      }
+
+      // Answer line
+      const ansMatch = line.match(answerRe);
+      if (ansMatch) {
+        const raw = ansMatch[1]?.trim() || '';
+        // Could be 'B' or 'B. Some text' or 'Some text'
+        const letterOnly = raw.match(/^([A-Da-d])[.)\s]?/);
+        if (letterOnly) {
+          const idx = 'ABCD'.indexOf(letterOnly[1].toUpperCase());
+          const optAtIdx = current.options[idx];
+          if (idx !== -1 && optAtIdx) {
+            current.correctAnswer = optAtIdx;
+          } else {
+            // Try matching full text
+            current.correctAnswer = raw.replace(/^[A-Da-d][.)\s]+/, '').trim() || raw;
+          }
+        } else {
+          current.correctAnswer = raw;
+        }
+        continue;
+      }
+
+      // Multi-line question text continuation (no option/answer detected)
+      // Only append if we haven't seen any options yet
+      if (current.options.length === 0 && !line.match(/^[-–•*►>]/)) {
+        current.text += ' ' + line;
+      }
+    }
+
+    saveCurrentQuestion();
+
+    // Compact options: remove undefined slots
+    return questions.map(q => ({
+      ...q,
+      options: q.options.filter(Boolean),
+    }));
+  }
+
+  async function handleFileImport(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError('');
+    setImportedQuestions([]);
+    setImportAddedAll(false);
+    setImportFileName(file.name);
+    setImporting(true);
+    try {
+      let text = '';
+      if (file.name.endsWith('.docx')) {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        text = result.value;
+      } else {
+        // .txt or any plain-text file
+        text = await file.text();
+      }
+      const parsed = parseQuestionsFromText(text);
+      if (parsed.length === 0) {
+        setImportError('No questions detected. Make sure questions are numbered (e.g. "1.", "Q1.") and options are labelled A/B/C/D.');
+      } else {
+        setImportedQuestions(parsed);
+      }
+    } catch (err) {
+      setImportError('Failed to read file: ' + err.message);
+    } finally {
+      setImporting(false);
+      // reset input so same file can be re-imported
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function addImportedQuestion(q) {
+    const newQ = { text: q.text, options: q.options.length === 4 ? q.options : [...q.options, ...Array(4 - q.options.length).fill('')], correctAnswer: q.correctAnswer || '' };
+    setDraftQuestions(prev => {
+      const emptyIdx = prev.findIndex(r => !r.text.trim());
+      if (emptyIdx !== -1) return prev.map((r, idx) => idx === emptyIdx ? newQ : r);
+      return [...prev, newQ];
+    });
+  }
+
+  function addAllImportedQuestions() {
+    setDraftQuestions(prev => {
+      let result = [...prev];
+      for (const q of importedQuestions) {
+        const newQ = { text: q.text, options: q.options.length === 4 ? q.options : [...q.options, ...Array(4 - q.options.length).fill('')], correctAnswer: q.correctAnswer || '' };
+        const emptyIdx = result.findIndex(r => !r.text.trim());
+        if (emptyIdx !== -1) result = result.map((r, idx) => idx === emptyIdx ? newQ : r);
+        else result = [...result, newQ];
+      }
+      return result;
+    });
+    setImportAddedAll(true);
+  }
+
   async function handleGenerateAIQuestions(e) {
     e.preventDefault();
     if (!aiTopic.trim()) return setAiError('Enter a topic first.');
@@ -131,6 +317,24 @@ export default function TeacherDashboard({ session, onLogout }) {
       await api.resetAttempt(session.token, selectedQuiz.id, studentId);
       const data = await api.getAttempts(session.token, selectedQuiz.id);
       setAttempts(data.attempts);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function handleReactivateQuiz(quizId) {
+    setError('');
+    try {
+      await api.reactivateQuiz(session.token, quizId);
+      showSuccess('Quiz successfully reactivated! Students now have 2 days to attempt it.');
+      loadQuizzes();
+    } catch (err) { setError(err.message); }
+  }
+
+  async function handleDeactivateQuiz(quizId) {
+    setError('');
+    try {
+      await api.deactivateQuiz(session.token, quizId);
+      showSuccess('Quiz successfully closed/deactivated.');
+      loadQuizzes();
     } catch (err) { setError(err.message); }
   }
 
@@ -300,64 +504,190 @@ export default function TeacherDashboard({ session, onLogout }) {
                   </form>
                 </div>
 
-                {/* Right — AI panel */}
+                {/* Right — AI + Import tabbed panel */}
                 <div className="ai-panel">
-                  <div className="ai-badge">✨ AI Assistant</div>
-                  <p style={{ fontSize:13, color:'var(--text-soft)', marginBottom:16, lineHeight:1.5 }}>
-                    Gemini generates MCQ questions with the correct answer pre-marked.
-                  </p>
-                  {aiError && <div className="error-msg">⚠ {aiError}</div>}
-                  <form onSubmit={handleGenerateAIQuestions} style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                    <div className="field" style={{ marginBottom:0 }}>
-                      <label>Topic / concept</label>
-                      <input type="text" placeholder="e.g. JavaScript Promises" value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
-                    </div>
-                    <div className="field" style={{ marginBottom:0 }}>
-                      <label>How many questions</label>
-                      <input type="number" min="1" step="1" value={aiCount} onChange={e=>setAiCount(Math.max(1,parseInt(e.target.value)||1))} />
-                    </div>
-                    <button type="submit" className="btn btn-ghost" disabled={generating} style={{ marginTop:2 }}>
-                      {generating ? <><span className="spinner spinner-dark" style={{ width:14,height:14,borderWidth:2 }}/>Generating…</> : '✨ Generate with Gemini'}
-                    </button>
-                  </form>
 
-                  {aiQuestions.length > 0 && (
-                    <div style={{ marginTop:20 }}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                        <span style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--text-muted)' }}>{aiQuestions.length} generated</span>
-                        <button type="button" className={`btn btn-sm ${addedAll?'btn-ghost':'btn-primary'}`} style={{ fontSize:12, padding:'6px 12px' }} onClick={addAllGeneratedQuestions} disabled={addedAll}>
-                          {addedAll ? '✓ All added' : '+ Add all'}
+                  {/* Tab switcher */}
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 4 }}>
+                    {[{ id: 'ai', label: '✨ AI Generate' }, { id: 'import', label: '📁 Import File' }].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setRightTab(tab.id)}
+                        style={{
+                          flex: 1, padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                          fontSize: 12.5, fontWeight: 700, transition: 'all 0.18s ease',
+                          background: rightTab === tab.id ? 'rgba(56,182,255,0.18)' : 'transparent',
+                          color: rightTab === tab.id ? 'var(--accent-bright)' : 'var(--text-muted)',
+                          boxShadow: rightTab === tab.id ? '0 0 0 1px rgba(56,182,255,0.3)' : 'none',
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ── AI tab ── */}
+                  {rightTab === 'ai' && (
+                    <>
+                      <p style={{ fontSize:13, color:'var(--text-soft)', marginBottom:16, lineHeight:1.5 }}>
+                        Gemini generates MCQ questions with the correct answer pre-marked.
+                      </p>
+                      {aiError && <div className="error-msg">⚠ {aiError}</div>}
+                      <form onSubmit={handleGenerateAIQuestions} style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                        <div className="field" style={{ marginBottom:0 }}>
+                          <label>Topic / concept</label>
+                          <input type="text" placeholder="e.g. JavaScript Promises" value={aiTopic} onChange={e=>setAiTopic(e.target.value)} />
+                        </div>
+                        <div className="field" style={{ marginBottom:0 }}>
+                          <label>How many questions</label>
+                          <input type="number" min="1" step="1" value={aiCount} onChange={e=>setAiCount(Math.max(1,parseInt(e.target.value)||1))} />
+                        </div>
+                        <button type="submit" className="btn btn-ghost" disabled={generating} style={{ marginTop:2 }}>
+                          {generating ? <><span className="spinner spinner-dark" style={{ width:14,height:14,borderWidth:2 }}/>Generating…</> : '✨ Generate with Gemini'}
                         </button>
-                      </div>
-                      <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:340, overflowY:'auto', paddingRight:2 }}>
-                        {aiQuestions.map((q, idx) => {
-                          const obj = getQuestionObj(q);
-                          return (
-                            <div key={idx} className="ai-question-card" style={{ animationDelay:`${idx*0.04}s`, flexDirection:'column', gap:8 }}>
-                              <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
-                                <span style={{ fontWeight:600, color:'var(--text)', fontSize:13 }}>{idx+1}. {obj.text}</span>
-                                <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }} onClick={()=>addGeneratedQuestion(q)}>+ Add</button>
-                              </div>
-                              {obj.options.length > 0 && (
-                                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
-                                  {obj.options.map((opt, oi) => (
-                                    <span key={oi} style={{ fontSize:11.5, color: opt===obj.correctAnswer?'var(--success)':'var(--text-soft)', display:'flex', gap:5 }}>
-                                      <span style={{ fontWeight:700, color:opt===obj.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
-                                        {opt===obj.correctAnswer ? '✓' : LETTERS[oi]+'.'}
-                                      </span>
-                                      {opt}
-                                    </span>
-                                  ))}
+                      </form>
+
+                      {aiQuestions.length > 0 && (
+                        <div style={{ marginTop:20 }}>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                            <span style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--text-muted)' }}>{aiQuestions.length} generated</span>
+                            <button type="button" className={`btn btn-sm ${addedAll?'btn-ghost':'btn-primary'}`} style={{ fontSize:12, padding:'6px 12px' }} onClick={addAllGeneratedQuestions} disabled={addedAll}>
+                              {addedAll ? '✓ All added' : '+ Add all'}
+                            </button>
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:340, overflowY:'auto', paddingRight:2 }}>
+                            {aiQuestions.map((q, idx) => {
+                              const obj = getQuestionObj(q);
+                              return (
+                                <div key={idx} className="ai-question-card" style={{ animationDelay:`${idx*0.04}s`, flexDirection:'column', gap:8 }}>
+                                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+                                    <span style={{ fontWeight:600, color:'var(--text)', fontSize:13 }}>{idx+1}. {obj.text}</span>
+                                    <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }} onClick={()=>addGeneratedQuestion(q)}>+ Add</button>
+                                  </div>
+                                  {obj.options.length > 0 && (
+                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                                      {obj.options.map((opt, oi) => (
+                                        <span key={oi} style={{ fontSize:11.5, color: opt===obj.correctAnswer?'var(--success)':'var(--text-soft)', display:'flex', gap:5 }}>
+                                          <span style={{ fontWeight:700, color:opt===obj.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
+                                            {opt===obj.correctAnswer ? '✓' : LETTERS[oi]+'.'}
+                                          </span>
+                                          {opt}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {obj.correctAnswer && (
+                                    <div style={{ fontSize:11, color:'var(--success)', fontWeight:600 }}>✓ Correct: {obj.correctAnswer}</div>
+                                  )}
                                 </div>
-                              )}
-                              {obj.correctAnswer && (
-                                <div style={{ fontSize:11, color:'var(--success)', fontWeight:600 }}>✓ Correct: {obj.correctAnswer}</div>
-                              )}
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── Import tab ── */}
+                  {rightTab === 'import' && (
+                    <>
+                      <p style={{ fontSize:13, color:'var(--text-soft)', marginBottom:14, lineHeight:1.6 }}>
+                        Upload a <strong style={{ color:'var(--text)' }}>.docx</strong> or <strong style={{ color:'var(--text)' }}>.txt</strong> file.
+                        Questions must be numbered (<code style={{ fontSize:11, background:'rgba(255,255,255,0.07)', padding:'1px 5px', borderRadius:4 }}>1.</code>, <code style={{ fontSize:11, background:'rgba(255,255,255,0.07)', padding:'1px 5px', borderRadius:4 }}>Q1.</code>)
+                        and options labelled A/B/C/D. Mark the correct answer with <code style={{ fontSize:11, background:'rgba(255,255,255,0.07)', padding:'1px 5px', borderRadius:4 }}>Answer: B</code> or a <code style={{ fontSize:11, background:'rgba(255,255,255,0.07)', padding:'1px 5px', borderRadius:4 }}>*</code> prefix.
+                      </p>
+
+                      {/* Drop zone / file picker */}
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                          border: '2px dashed rgba(56,182,255,0.35)',
+                          borderRadius: 12,
+                          padding: '20px 16px',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          background: 'rgba(56,182,255,0.04)',
+                          transition: 'all 0.18s ease',
+                          marginBottom: 14,
+                        }}
+                        onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = 'rgba(56,182,255,0.1)'; }}
+                        onDragLeave={e => { e.currentTarget.style.background = 'rgba(56,182,255,0.04)'; }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          e.currentTarget.style.background = 'rgba(56,182,255,0.04)';
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) handleFileImport({ target: { files: [file] } });
+                        }}
+                      >
+                        <div style={{ fontSize: 28, marginBottom: 6 }}>{importing ? '⏳' : '📂'}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-bright)', marginBottom: 3 }}>
+                          {importing ? 'Parsing file…' : importFileName ? importFileName : 'Click or drag & drop'}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>.docx or .txt · Word / plain text</div>
                       </div>
-                    </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                        style={{ display: 'none' }}
+                        onChange={handleFileImport}
+                      />
+
+                      {importError && <div className="error-msg" style={{ marginBottom: 10 }}>⚠ {importError}</div>}
+
+                      {importedQuestions.length > 0 && (
+                        <div>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                            <span style={{ fontSize:12, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--text-muted)' }}>
+                              {importedQuestions.length} detected
+                            </span>
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${importAddedAll ? 'btn-ghost' : 'btn-primary'}`}
+                              style={{ fontSize:12, padding:'6px 12px' }}
+                              onClick={addAllImportedQuestions}
+                              disabled={importAddedAll}
+                            >
+                              {importAddedAll ? '✓ All added' : '+ Add all'}
+                            </button>
+                          </div>
+
+                          <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:360, overflowY:'auto', paddingRight:2 }}>
+                            {importedQuestions.map((q, idx) => (
+                              <div key={idx} className="ai-question-card" style={{ animationDelay:`${idx*0.04}s`, flexDirection:'column', gap:7 }}>
+                                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+                                  <span style={{ fontWeight:600, color:'var(--text)', fontSize:13, lineHeight:1.4 }}>{idx+1}. {q.text}</span>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }}
+                                    onClick={() => addImportedQuestion(q)}
+                                  >+ Add</button>
+                                </div>
+                                {q.options.length > 0 && (
+                                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                                    {q.options.map((opt, oi) => (
+                                      <span key={oi} style={{ fontSize:11.5, display:'flex', gap:5, color: opt===q.correctAnswer?'var(--success)':'var(--text-soft)' }}>
+                                        <span style={{ fontWeight:700, color: opt===q.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
+                                          {opt===q.correctAnswer ? '✓' : LETTERS[oi]+'.'}
+                                        </span>
+                                        {opt}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {q.correctAnswer ? (
+                                  <div style={{ fontSize:11, color:'var(--success)', fontWeight:600 }}>✓ Correct: {q.correctAnswer}</div>
+                                ) : (
+                                  <div style={{ fontSize:11, color:'var(--warn)', fontWeight:600 }}>⚠ No correct answer detected — set it manually</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -368,21 +698,35 @@ export default function TeacherDashboard({ session, onLogout }) {
               <div className="section-title" style={{ marginBottom:16 }}><span className="icon">📚</span>Past quizzes</div>
               {loading && <div style={{ display:'flex', alignItems:'center', gap:10, color:'var(--text-muted)', padding:'12px 0' }}><span className="spinner spinner-dark" style={{ width:16,height:16,borderWidth:2 }}/> Loading…</div>}
               {!loading && quizzes.length === 0 && <div className="empty-state"><span className="empty-icon">📭</span>No quizzes posted yet.</div>}
-              {!loading && quizzes.map(q => (
-                <div className="quiz-card" key={q.id}>
-                  <div>
-                    <div className="quiz-card-title">
-                      {q.title}
-                      {q.isActive && <span className="badge">● Live</span>}
-                      {q.semester && (
-                        <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
-                      )}
+              {!loading && quizzes.map(q => {
+                const weekInfo = getWeeklyInterval(q.createdAt);
+                return (
+                  <div className="quiz-card" key={q.id}>
+                    <div>
+                      <div className="quiz-card-title">
+                        Week {weekInfo.weekNum} ({weekInfo.rangeStr}) · {q.title}
+                        {q.isActive && (Date.now() > q.createdAt + 2 * 24 * 60 * 60 * 1000 ? (
+                          <span className="badge" style={{ background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid rgba(250,204,21,0.3)' }}>● Closed</span>
+                        ) : (
+                          <span className="badge">● Live</span>
+                        ))}
+                        {q.semester && (
+                          <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
+                        )}
+                      </div>
+                      <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {q.isActive && Date.now() <= q.createdAt + 2 * 24 * 60 * 60 * 1000 ? (
+                        <button className="btn btn-danger btn-sm" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => handleDeactivateQuiz(q.id)}>Close</button>
+                      ) : (
+                        <button className="btn btn-primary btn-sm" onClick={() => handleReactivateQuiz(q.id)}>Reopen</button>
+                      )}
+                      <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>View responses →</button>
+                    </div>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>View responses →</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         ) : (
@@ -469,7 +813,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                       <thead>
                         <tr>
                           <th>Student</th>
-                          <th>UUCMS No</th>
+                          <th>Roll No</th>
                           <th>Score</th>
                           <th>Status</th>
                           <th>Switches</th>

@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
 import { api } from '../api';
 
-function getUucmsSemesters(uucmsNo) {
+function getRollNoSemesters(uucmsNo) {
   if (!uucmsNo) return null;
   const clean = String(uucmsNo).trim().toUpperCase();
-  const match = clean.match(/^U15BH(24|25|26)S(\d{4})$/);
+  const match = clean.match(/^(24|25|26)BCA(\d{3})$/);
   if (!match) return null;
   
   const batch = match[1]; // "24", "25", "26"
@@ -36,9 +36,9 @@ export default function Login({ onLogin }) {
     if (!email.trim()) return setError('Enter your email address.');
     if (role === 'student') {
       if (!name.trim()) return setError('Enter your name.');
-      if (!uucmsNo.trim()) return setError('Enter your UUCMS number.');
-      if (!getUucmsSemesters(uucmsNo)) {
-        return setError('Invalid UUCMS Number (Must be U15BH24S/25S/26S followed by a number from 0001 to 0250).');
+      if (!uucmsNo.trim()) return setError('Enter your roll number.');
+      if (!getRollNoSemesters(uucmsNo)) {
+        return setError('Invalid Roll Number (Must be like 26BCA001-26BCA250, 25BCA001-25BCA250, or 24BCA001-24BCA250).');
       }
     }
     setLoading(true);
@@ -157,17 +157,17 @@ export default function Login({ onLogin }) {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="uucms">UUCMS Number</label>
+                    <label htmlFor="uucms">Roll Number</label>
                     <input
                       id="uucms"
                       type="text"
-                      placeholder="e.g. U15BH26S0001"
+                      placeholder="e.g. 26BCA001"
                       value={uucmsNo}
                       onChange={(e) => setUucmsNo(e.target.value)}
                       style={{ textTransform: 'uppercase' }}
                     />
                     {uucmsNo.trim() && (() => {
-                      const sems = getUucmsSemesters(uucmsNo);
+                      const sems = getRollNoSemesters(uucmsNo);
                       if (sems) {
                         return (
                           <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4, fontWeight: 500 }}>
@@ -177,7 +177,7 @@ export default function Login({ onLogin }) {
                       } else {
                         return (
                           <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, fontWeight: 500 }}>
-                            ❌ Invalid UUCMS number or outside range (0001 - 0250)
+                            ❌ Invalid Roll number or outside range (001 - 250)
                           </div>
                         );
                       }

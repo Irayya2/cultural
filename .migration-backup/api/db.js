@@ -3,12 +3,11 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-let supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+let supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || '';
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials in .env");
-  process.exit(1);
+  console.warn("⚠️ Warning: Missing SUPABASE_URL or SUPABASE_KEY environment variables!");
 }
 
 // Clean up URL if it contains /rest/v1 suffix
@@ -18,7 +17,10 @@ if (supabaseUrl.endsWith('/rest/v1/')) {
   supabaseUrl = supabaseUrl.slice(0, -8);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseKey || 'placeholder'
+);
 
 // We no longer need a read/write init phase like lowdb, but we keep the export pattern.
 async function initDb() {

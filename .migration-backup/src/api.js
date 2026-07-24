@@ -44,6 +44,7 @@ export const api = {
 
   // student
   getActiveQuiz: (token, semester) => request(`/api/student/quiz/active?semester=${semester}`, { token }),
+  getQuizHistory: (token) => request('/api/student/quiz/history', { token }),
   saveAnswer: (token, quizId, questionId, answer) =>
     request(`/api/student/quiz/${quizId}/answer`, { method: 'POST', token, body: { questionId, answer } }),
   reportTabSwitch: (token, quizId) =>
@@ -58,6 +59,10 @@ export const api = {
   getAttempts: (token, quizId) => request(`/api/teacher/quiz/${quizId}/attempts`, { token }),
   resetAttempt: (token, quizId, studentId) =>
     request(`/api/teacher/quiz/${quizId}/attempts/${studentId}/reset`, { method: 'POST', token }),
+  reactivateQuiz: (token, quizId) =>
+    request(`/api/teacher/quiz/${quizId}/reactivate`, { method: 'POST', token }),
+  deactivateQuiz: (token, quizId) =>
+    request(`/api/teacher/quiz/${quizId}/deactivate`, { method: 'POST', token }),
   exportUrl: (quizId, token) => `${API_URL}/api/teacher/quiz/${quizId}/export?token=${token}`,
   generateQuestions: (token, topic, count) =>
     request('/api/teacher/generate-questions', { method: 'POST', token, body: { topic, count } }),

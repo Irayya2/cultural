@@ -29,6 +29,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health check and root endpoints for Render & Vercel
+app.get('/', (req, res) => {
+  res.send('Weekly Quiz App API is running 🚀');
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const PORT = process.env.PORT || 4000;
 
 // Comma-separated list of teacher emails allowed to log in as teacher.
@@ -37,10 +46,10 @@ const TEACHER_EMAILS = (process.env.TEACHER_EMAILS || '')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-function getUucmsSemesters(uucmsNo) {
+function getRollNoSemesters(uucmsNo) {
   if (!uucmsNo) return null;
   const clean = String(uucmsNo).trim().toUpperCase();
-  const match = clean.match(/^U15BH(24|25|26)S(\d{4})$/);
+  const match = clean.match(/^(24|25|26)BCA(\d{3})$/);
   if (!match) return null;
   
   const batch = match[1]; // "24", "25", "26"
@@ -138,11 +147,11 @@ app.post('/api/otp/verify', async (req, res) => {
 
   if (role === 'student') {
     if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
-    if (!uucmsNo || !uucmsNo.trim()) return res.status(400).json({ error: 'UUCMS number is required' });
+    if (!uucmsNo || !uucmsNo.trim()) return res.status(400).json({ error: 'Roll number is required' });
     
-    const semesters = getUucmsSemesters(uucmsNo);
+    const semesters = getRollNoSemesters(uucmsNo);
     if (!semesters) {
-      return res.status(400).json({ error: 'Invalid UUCMS Number format or range (Must be U15BH24S/25S/26S from 0001 to 0250)' });
+      return res.status(400).json({ error: 'Invalid Roll Number format or range (Must be 26BCA001-26BCA250, 25BCA001-25BCA250, or 24BCA001-24BCA250)' });
     }
     finalUucmsNo = uucmsNo.trim().toUpperCase();
   }
@@ -376,6 +385,48 @@ app.post('/api/teacher/quiz/:quizId/attempts/:studentId/reset', requireTeacher, 
   res.json({ ok: true });
 });
 
+app.post('/api/teacher/quiz/:quizId/reactivate', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+  
+  // Find the quiz to know its semester
+  const { data: quizzes, error: fetchErr } = await supabase.from('quiz_sets').select('*').eq('id', quizId).limit(1);
+  if (fetchErr || !quizzes || quizzes.length === 0) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+  
+  const quiz = quizzes[0];
+  const semesterNum = quiz.semester;
+
+  // Deactivate all quizzes for this semester
+  await supabase.from('quiz_sets').update({ is_active: false }).eq('semester', semesterNum);
+
+  // Reactivate the chosen quiz and update its creation time to reset the 2-day timer
+  const { error: updateErr } = await supabase
+    .from('quiz_sets')
+    .update({ 
+      is_active: true, 
+      created_at: Date.now() 
+    })
+    .eq('id', quizId);
+
+  if (updateErr) {
+    console.error("Reactivation error:", updateErr);
+    return res.status(500).json({ error: 'Failed to reactivate quiz' });
+  }
+
+  res.json({ ok: true });
+});
+
+app.post('/api/teacher/quiz/:quizId/deactivate', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+  const { error } = await supabase.from('quiz_sets').update({ is_active: false }).eq('id', quizId);
+  if (error) {
+    console.error("Deactivation error:", error);
+    return res.status(500).json({ error: 'Failed to close quiz' });
+  }
+  res.json({ ok: true });
+});
+
 app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => {
   const { quizId } = req.params;
   
@@ -396,7 +447,7 @@ app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => 
   sheet.columns = [
     { header: 'Student Name',  key: 'name',        width: 22 },
     { header: 'Student Email', key: 'email',        width: 30 },
-    { header: 'UUCMS No',      key: 'uucmsNo',     width: 20 },
+    { header: 'Roll No',      key: 'uucmsNo',     width: 20 },
     { header: 'Semester',      key: 'semester',    width: 12 },
     { header: 'Score',         key: 'score',        width: 10 },
     { header: `/ ${gradableQuestions.length}`,      key: 'total',       width: 8  },
@@ -558,6 +609,54 @@ app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => 
 // STUDENT ROUTES
 // ======================================================================
 
+app.get('/api/student/quiz/history', requireStudent, async (req, res) => {
+  try {
+    const { data: attempts, error } = await supabase
+      .from('attempts')
+      .select('*, quiz_sets(*)')
+      .eq('student_id', req.user.id);
+
+    if (error) {
+      console.error("Fetch history error:", error);
+      return res.status(500).json({ error: 'Failed to fetch attempt history' });
+    }
+
+    const history = (attempts || []).map((a) => {
+      const quizSet = a.quiz_sets ? mapQuizSet(a.quiz_sets) : null;
+      if (!quizSet) return null;
+      
+      const gradableQuestions = quizSet.questions.filter((q) => q.correctAnswer);
+      const score = gradableQuestions.reduce((sum, q) => {
+        return sum + (a.answers[q.id] === q.correctAnswer ? 1 : 0);
+      }, 0);
+
+      const RESULTS_RELEASE_DELAY_MS = 2 * 24 * 60 * 60 * 1000;
+      const releaseTime = quizSet.createdAt ? quizSet.createdAt + RESULTS_RELEASE_DELAY_MS : 0;
+      const resultsReleased = Date.now() >= releaseTime;
+
+      return {
+        id: a.id,
+        quizSetId: a.quiz_set_id,
+        quizTitle: quizSet.title,
+        semester: quizSet.semester,
+        score,
+        totalQuestions: quizSet.questions.length,
+        gradableTotal: gradableQuestions.length,
+        status: a.status,
+        submittedAt: a.submitted_at,
+        startedAt: a.started_at,
+        resultsReleased,
+        quizCreatedAt: quizSet.createdAt,
+      };
+    }).filter(Boolean);
+
+    res.json({ history });
+  } catch (err) {
+    console.error("History endpoint error:", err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
   const requestedSem = Number(req.query.semester);
   if (!req.query.semester || isNaN(requestedSem) || requestedSem < 1 || requestedSem > 6) {
@@ -568,11 +667,11 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
   if (!students || students.length === 0) return res.status(404).json({ error: 'Student profile not found.' });
   
   const student = students[0];
-  const allowedSems = getUucmsSemesters(student.uucms_no);
-  if (!allowedSems) return res.status(403).json({ error: 'Invalid UUCMS registration. Access denied.' });
-
+  const allowedSems = getRollNoSemesters(student.uucms_no);
+  if (!allowedSems) return res.status(403).json({ error: 'Invalid Roll Number registration. Access denied.' });
+ 
   if (!allowedSems.includes(requestedSem)) {
-    return res.status(403).json({ error: `Access denied. Your UUCMS number (${student.uucms_no}) does not allow accessing Semester ${requestedSem} quizzes.` });
+    return res.status(403).json({ error: `Access denied. Your Roll number (${student.uucms_no}) does not allow accessing Semester ${requestedSem} quizzes.` });
   }
 
   const { data: quizzes } = await supabase.from('quiz_sets').select('*').eq('is_active', true).eq('semester', requestedSem).limit(1);
@@ -580,10 +679,17 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
   
   const quizSet = mapQuizSet(quizzes[0]);
 
+  const EXPIRE_DURATION_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+  const isQuizExpired = Date.now() > (quizSet.createdAt || 0) + EXPIRE_DURATION_MS;
+
   const { data: attempts } = await supabase.from('attempts').select('*').match({ student_id: req.user.id, quiz_set_id: quizSet.id }).limit(1);
   let attempt = attempts && attempts.length > 0 ? attempts[0] : null;
 
   if (!attempt) {
+    if (isQuizExpired) {
+      return res.json({ quizSet: null });
+    }
+
     const seed = `${req.user.id}::${quizSet.id}`;
     const order = seededShuffle(quizSet.questions.map((q) => q.id), seed);
     
@@ -603,6 +709,13 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
       console.error("Failed to insert attempt", error);
       return res.status(500).json({ error: 'Database error creating attempt' });
     }
+  } else if (attempt.status === 'in_progress' && isQuizExpired) {
+    attempt.status = 'auto_submitted';
+    attempt.submitted_at = Date.now();
+    await supabase.from('attempts').update({ 
+      status: 'auto_submitted', 
+      submitted_at: attempt.submitted_at 
+    }).eq('id', attempt.id);
   }
 
   const RESULTS_RELEASE_DELAY_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
@@ -690,18 +803,20 @@ app.post('/api/student/quiz/:quizId/submit', requireStudent, async (req, res) =>
   res.json({ ok: true });
 });
 
-// ---------- Start server for local development ----------
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+// ---------- Start server for local development & Render ----------
+if (!process.env.VERCEL) {
   initDb().then(() => {
     app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Server running on port ${PORT}`);
       if (!process.env.GMAIL_USER) {
         console.log('NOTE: No GMAIL_USER configured - OTPs will be logged to console instead of emailed.');
       }
       if (TEACHER_EMAILS.length === 0) {
-        console.log('WARNING: No TEACHER_EMAILS configured in .env - no one will be able to log in as teacher.');
+        console.log('WARNING: No TEACHER_EMAILS configured in environment - no one will be able to log in as teacher.');
       }
     });
+  }).catch((err) => {
+    console.error('Failed to initialize Supabase client:', err);
   });
 }
 
