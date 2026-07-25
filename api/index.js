@@ -801,17 +801,17 @@ app.post('/api/student/quiz/:quizId/submit', requireStudent, async (req, res) =>
 
 // ---------- Start server for local development & Render ----------
 if (!process.env.VERCEL) {
-  initDb().then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      if (!process.env.RESEND_API_KEY) {
-        console.log('NOTE: No RESEND_API_KEY configured - OTPs will be logged to console instead of emailed.');
-      }
-      if (TEACHER_EMAILS.length === 0) {
-        console.log('WARNING: No TEACHER_EMAILS configured in environment - no one will be able to log in as teacher.');
-      }
-    });
-  }).catch((err) => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+    if (!process.env.RESEND_API_KEY) {
+      console.log('NOTE: No RESEND_API_KEY configured - OTPs will be logged to console instead of emailed.');
+    }
+    if (TEACHER_EMAILS.length === 0) {
+      console.log('WARNING: No TEACHER_EMAILS configured in environment - no one will be able to log in as teacher.');
+    }
+  });
+
+  initDb().catch((err) => {
     console.error('Failed to initialize Supabase client:', err);
   });
 }
