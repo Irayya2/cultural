@@ -64,6 +64,8 @@ export const api = {
     request(`/api/teacher/quiz/${quizId}/reactivate`, { method: 'POST', token }),
   deactivateQuiz: (token, quizId) =>
     request(`/api/teacher/quiz/${quizId}/deactivate`, { method: 'POST', token }),
+  deleteQuiz: (token, quizId) =>
+    request(`/api/teacher/quiz/${quizId}`, { method: 'DELETE', token }),
   exportUrl: (quizId, token) => `${API_URL}/api/teacher/quiz/${quizId}/export?token=${token}`,
   generateQuestions: (token, topic, count) =>
     request('/api/teacher/generate-questions', { method: 'POST', token, body: { topic, count } }),

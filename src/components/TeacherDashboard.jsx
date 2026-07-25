@@ -341,6 +341,19 @@ export default function TeacherDashboard({ session, onLogout }) {
     } catch (err) { setError(err.message); }
   }
 
+  async function handleDeleteQuiz(quizId, quizTitle) {
+    if (!window.confirm(`Are you sure you want to delete "${quizTitle}"? This will permanently remove the quiz and all student attempts.`)) {
+      return;
+    }
+    setError('');
+    try {
+      await api.deleteQuiz(session.token, quizId);
+      showSuccess('Quiz deleted successfully.');
+      if (selectedQuiz?.id === quizId) setSelectedQuiz(null);
+      loadQuizzes();
+    } catch (err) { setError(err.message); }
+  }
+
   const initials    = session.email ? session.email[0].toUpperCase() : 'T';
   const activeQuiz  = quizzes.find(q => q.isActive);
   const filledCount = draftQuestions.filter(q => q.text.trim()).length;
@@ -716,13 +729,14 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </div>
                       <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {q.isActive && Date.now() <= q.createdAt + 2 * 24 * 60 * 60 * 1000 ? (
                         <button className="btn btn-danger btn-sm" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => handleDeactivateQuiz(q.id)}>Close</button>
                       ) : (
                         <button className="btn btn-primary btn-sm" onClick={() => handleReactivateQuiz(q.id)}>Reopen</button>
                       )}
                       <button className="btn btn-ghost btn-sm" onClick={()=>viewAttempts(q)}>View responses →</button>
+                      <button className="btn btn-sm" style={{ padding: '8px 12px', fontSize: 13, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.25)', cursor: 'pointer' }} onClick={() => handleDeleteQuiz(q.id, q.title)} title="Delete quiz">🗑️ Delete</button>
                     </div>
                   </div>
                 );

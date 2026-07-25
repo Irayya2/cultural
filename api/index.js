@@ -427,6 +427,17 @@ app.post('/api/teacher/quiz/:quizId/deactivate', requireTeacher, async (req, res
   res.json({ ok: true });
 });
 
+app.delete('/api/teacher/quiz/:quizId', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+  await supabase.from('attempts').delete().eq('quiz_set_id', quizId);
+  const { error } = await supabase.from('quiz_sets').delete().eq('id', quizId);
+  if (error) {
+    console.error("Delete quiz error:", error);
+    return res.status(500).json({ error: 'Failed to delete quiz' });
+  }
+  res.json({ ok: true });
+});
+
 app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => {
   const { quizId } = req.params;
   
