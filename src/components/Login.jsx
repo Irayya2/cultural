@@ -166,22 +166,17 @@ export default function Login({ onLogin }) {
                       onChange={(e) => setUucmsNo(e.target.value)}
                       style={{ textTransform: 'uppercase' }}
                     />
-                    {uucmsNo.trim() && (() => {
-                      const sems = getRollNoSemesters(uucmsNo);
-                      if (sems) {
-                        return (
-                          <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4, fontWeight: 500 }}>
-                            ✅ Semesters {sems.join(' & ')} detected
-                          </div>
-                        );
-                      } else {
-                        return (
-                          <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, fontWeight: 500 }}>
-                            ❌ Invalid Roll number or outside range (001 - 250)
-                          </div>
-                        );
-                      }
-                    })()}
+                    {uucmsNo.trim() && (
+                      getRollNoSemesters(uucmsNo) ? (
+                        <div style={{ fontSize: 12, color: 'var(--success)', marginTop: 4, fontWeight: 500 }}>
+                          ✅ Semesters {getRollNoSemesters(uucmsNo).join(' & ')} detected
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, fontWeight: 500 }}>
+                          ❌ Invalid Roll number or outside range (001 - 250)
+                        </div>
+                      )
+                    )}
                   </div>
                 </>
               )}

@@ -352,9 +352,6 @@ export default function TeacherDashboard({ session, onLogout }) {
     return 'var(--danger)';
   }
 
-  const sortedAttempts = [...attempts].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  const topScore = sortedAttempts[0]?.score ?? 0;
-
   return (
     <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse 800px 500px at 60% -120px,rgba(56,182,255,0.16),transparent),var(--bg)', display:'flex', flexDirection:'column' }}>
 
@@ -752,7 +749,11 @@ export default function TeacherDashboard({ session, onLogout }) {
             {!attemptsLoading && attempts.length === 0 && <div className="empty-state"><span className="empty-icon">📭</span>No students have started this quiz yet.</div>}
 
             {!attemptsLoading && attempts.length > 0 && (() => {
-              const gradableTotal = sortedAttempts[0]?.gradableTotal ?? 0;
+              const sorted = [...attempts].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+              const top = sorted[0]?.score ?? 0;
+              const gradableTotal = sorted[0]?.gradableTotal ?? 0;
+              const scored = sorted.filter(a => a.status !== 'in_progress');
+              const avg = scored.length && gradableTotal ? Math.round(scored.reduce((s, a) => s + (a.score ?? 0), 0) / scored.length * 100 / gradableTotal) : null;
 
               return (
                 <>
@@ -763,29 +764,25 @@ export default function TeacherDashboard({ session, onLogout }) {
                     </div>
 
                     {/* Class stats row */}
-                    {gradableTotal > 0 && (() => {
-                      const scored = sortedAttempts.filter(a=>a.status!=='in_progress');
-                      const avg = scored.length ? Math.round(scored.reduce((s,a)=>s+(a.score??0),0)/scored.length*100/gradableTotal) : null;
-                      return (
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
-                          {[
-                            { label:'Highest', value:`${topScore}/${gradableTotal}`, color:'var(--success)' },
-                            { label:'Class avg', value:avg!==null?`${avg}%`:'—', color: avg!=null?scoreColor(avg):'var(--text-muted)' },
-                            { label:'Submitted', value:`${scored.length}/${sortedAttempts.length}`, color:'var(--accent-bright)' },
-                          ].map(s => (
-                            <div key={s.label} className="stat-card">
-                              <div className="stat-value" style={{ fontSize:22, color:s.color }}>{s.value}</div>
-                              <div className="stat-label">{s.label}</div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
+                    {gradableTotal > 0 && (
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+                        {[
+                          { label:'Highest', value:`${top}/${gradableTotal}`, color:'var(--success)' },
+                          { label:'Class avg', value:avg!==null?`${avg}%`:'—', color: avg!=null?scoreColor(avg):'var(--text-muted)' },
+                          { label:'Submitted', value:`${scored.length}/${sorted.length}`, color:'var(--accent-bright)' },
+                        ].map(s => (
+                          <div key={s.label} className="stat-card">
+                            <div className="stat-value" style={{ fontSize:22, color:s.color }}>{s.value}</div>
+                            <div className="stat-label">{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Ranked list */}
                     {gradableTotal > 0 && (
                       <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
-                        {sortedAttempts.map((a, rank) => {
+                        {sorted.map((a, rank) => {
                           const pct = gradableTotal ? Math.round((a.score??0)/gradableTotal*100) : null;
                           const medals = ['🥇','🥈','🥉'];
                           return (
