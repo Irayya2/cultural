@@ -115,27 +115,6 @@ export default function StudentQuiz({ session, onLogout }) {
     setTimeout(() => setToast(''), 5000);
   }, []);
 
-  const reportMalpractice = useCallback(async (reason) => {
-    // Only fire after student clicks "Start Quiz"
-    if (!startedRef.current) return;
-    if (statusRef.current !== 'in_progress' || !quizIdRef.current) return;
-    const now = Date.now();
-    if (now - lastReportedRef.current < 2500) return;
-    lastReportedRef.current = now;
-    try {
-      const res = await api.reportTabSwitch(session.token, quizIdRef.current);
-      setTabSwitchCount(res.tabSwitchCount);
-      setStatus(res.status);
-      const left = Math.max(0, 3 - res.tabSwitchCount);
-      if (res.status === 'auto_submitted') {
-        showToast('⛔ Quiz auto-submitted — 3 malpractice actions detected.', 'danger');
-        loadQuiz();
-      } else {
-        showToast(`🚨 ${reason} detected — ⚠ ${left} strike${left !== 1 ? 's' : ''} left before auto-submit`, 'warn');
-      }
-    } catch (err) { console.error('Malpractice report failed:', err.message); }
-  }, [session.token, showToast, loadQuiz]);
-
   const loadQuiz = useCallback(async () => {
     if (!selectedSemester) return;
     setLoading(true); setError('');
@@ -159,6 +138,27 @@ export default function StudentQuiz({ session, onLogout }) {
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }, [session.token, selectedSemester]);
+
+  const reportMalpractice = useCallback(async (reason) => {
+    // Only fire after student clicks "Start Quiz"
+    if (!startedRef.current) return;
+    if (statusRef.current !== 'in_progress' || !quizIdRef.current) return;
+    const now = Date.now();
+    if (now - lastReportedRef.current < 2500) return;
+    lastReportedRef.current = now;
+    try {
+      const res = await api.reportTabSwitch(session.token, quizIdRef.current);
+      setTabSwitchCount(res.tabSwitchCount);
+      setStatus(res.status);
+      const left = Math.max(0, 3 - res.tabSwitchCount);
+      if (res.status === 'auto_submitted') {
+        showToast('⛔ Quiz auto-submitted — 3 malpractice actions detected.', 'danger');
+        loadQuiz();
+      } else {
+        showToast(`🚨 ${reason} detected — ⚠ ${left} strike${left !== 1 ? 's' : ''} left before auto-submit`, 'warn');
+      }
+    } catch (err) { console.error('Malpractice report failed:', err.message); }
+  }, [session.token, showToast, loadQuiz]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
