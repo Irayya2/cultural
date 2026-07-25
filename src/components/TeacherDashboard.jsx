@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import mammoth from 'mammoth';
 import { api } from '../api';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
@@ -226,6 +225,8 @@ export default function TeacherDashboard({ session, onLogout }) {
       let text = '';
       if (file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
+        const mammothModule = await import('mammoth');
+        const mammoth = mammothModule.default || mammothModule;
         const result = await mammoth.extractRawText({ arrayBuffer });
         text = result.value;
       } else {
