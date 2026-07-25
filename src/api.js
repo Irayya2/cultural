@@ -3,7 +3,8 @@
 // Set VITE_API_URL in client/.env to point at your deployed backend,
 // e.g. VITE_API_URL=https://your-quiz-backend.onrender.com
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+// Strip any trailing slash so that URL + "/api/..." never produces a double-slash (//)
+const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };
