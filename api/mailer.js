@@ -1,66 +1,46 @@
 // mailer.js
-// Sends OTP emails using Gmail + an "App Password".
+// Sends OTP emails using Resend (https://resend.com).
 //
-// SETUP (one-time, takes 5 minutes):
-// 1. Use a Gmail account (create a fresh one for this app, e.g. yourquiz.app@gmail.com)
-// 2. Turn on 2-Step Verification: https://myaccount.google.com/security
-// 3. Create an App Password: https://myaccount.google.com/apppasswords
-//    - Select "Mail" as the app, generate, copy the 16-character password
-// 4. Put the gmail address and that 16-char password into server/.env (see .env.example)
-//
-// This sends real emails immediately, no business verification needed,
-// and the free Gmail sending limit (~500/day) is far more than one class needs weekly.
+// SETUP (one-time):
+// 1. Sign up at https://resend.com and verify your sending domain (or use the
+//    Resend sandbox address onboarding@resend.dev for testing without a domain).
+// 2. Create an API key in the Resend dashboard.
+// 3. Add it to your environment as RESEND_API_KEY.
+// 4. Set RESEND_FROM to the address you want to send from, e.g.:
+//      RESEND_FROM=Weekly Quiz <noreply@yourdomain.com>
+//    If omitted, the Resend onboarding sandbox address is used automatically.
 
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-let transporter = null;
+let resendClient = null;
 
-function normalizeEnvValue(value) {
-  return String(value ?? '').trim().replace(/\s+/g, '');
-}
-
-function getTransporter() {
-  if (transporter) return transporter;
-
-  transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    family: 4,
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
-    auth: {
-      user: normalizeEnvValue(process.env.GMAIL_USER),
-      pass: normalizeEnvValue(process.env.GMAIL_APP_PASSWORD),
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
-
-  return transporter;
+function getResendClient() {
+  if (resendClient) return resendClient;
+  resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
 }
 
 async function sendOtpEmail(toEmail, code, purpose) {
-  const gmailUser = normalizeEnvValue(process.env.GMAIL_USER);
-  const gmailPassword = normalizeEnvValue(process.env.GMAIL_APP_PASSWORD);
+  const apiKey = (process.env.RESEND_API_KEY || '').trim();
 
-  // In local/dev mode without real Gmail credentials configured,
-  // log the OTP to the console instead of failing, so you can still test the flow.
-  if (!gmailUser || !gmailPassword) {
-    console.log(`[DEV MODE - no email configured] OTP for ${toEmail}: ${code}`);
+  // In local/dev mode without a real API key configured,
+  // log the OTP to the console so the flow can still be tested.
+  if (!apiKey) {
+    console.log(`[DEV MODE - no RESEND_API_KEY configured] OTP for ${toEmail}: ${code}`);
     return { devMode: true };
   }
 
-  const t = getTransporter();
-  await t.verify();
-  console.log('SMTP connection successful');
   const subject = purpose === 'teacher' ? 'Your Teacher Login OTP' : 'Your Student Login OTP';
 
-  await t.sendMail({
-    from: `"Weekly Quiz" <${gmailUser}>`,
-    to: toEmail,
+  const from =
+    (process.env.RESEND_FROM || '').trim() ||
+    'Weekly Quiz <onboarding@resend.dev>';
+
+  const client = getResendClient();
+
+  const { error } = await client.emails.send({
+    from,
+    to: [toEmail],
     subject,
     text: `Your OTP code is: ${code}\n\nThis code expires in 10 minutes. If you did not request this, ignore this email.`,
     html: `
@@ -72,6 +52,10 @@ async function sendOtpEmail(toEmail, code, purpose) {
       </div>
     `,
   });
+
+  if (error) {
+    throw new Error(`Resend error: ${error.message}`);
+  }
 
   return { devMode: false };
 }

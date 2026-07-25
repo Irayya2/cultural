@@ -12,9 +12,9 @@ services:
         generateValue: true
       - key: TEACHER_EMAILS
         value: ihiremath644@gmail.com,swamihiremath17@gmail.com,rajeshpattan585@gmail.com,kakatkarshivani@gmail.com
-      - key: GMAIL_USER
-        value: gcccodezone@gmail.com
-      - key: GMAIL_APP_PASSWORD
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
         sync: false
       - key: GEMINI_API_KEY
         sync: false
