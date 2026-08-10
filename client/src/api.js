@@ -4,7 +4,16 @@
 // e.g. VITE_API_URL=https://your-quiz-backend.onrender.com
 
 // Strip any trailing slash so that URL + "/api/..." never produces a double-slash (//)
-const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '')).replace(/\/+$/, '');
+const rawApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '');
+const API_URL = rawApiUrl.replace(/\/+$/, '');
+
+if (!import.meta.env.VITE_API_URL && !import.meta.env.DEV) {
+  console.warn(
+    '[API Config Warning]: VITE_API_URL environment variable is not defined. ' +
+    'API calls will default to relative URLs, which fail with 405 Method Not Allowed on static hosting like Vercel. ' +
+    'Set VITE_API_URL=https://MY-RENDER-SERVICE.onrender.com in your Vercel Dashboard.'
+  );
+}
 
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };

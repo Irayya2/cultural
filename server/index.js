@@ -28,8 +28,27 @@ const {
   uuidv4,
 } = require('./auth');
 
-const app = express();
-app.use(cors());
+const allowedOrigins = [
+  'https://cultural1.vercel.app',
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      process.env.NODE_ENV !== 'production' ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Health check and root endpoints for Render & Vercel
