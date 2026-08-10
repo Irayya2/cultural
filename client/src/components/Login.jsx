@@ -69,10 +69,15 @@ export default function Login({ onLogin }) {
     }
   }
 
+  const [isSwapping, setIsSwapping] = useState(false);
+
   function switchRole(r) {
+    if (role === r) return;
+    setIsSwapping(true);
     setRole(r);
     setError('');
     setPassword('');
+    setTimeout(() => setIsSwapping(false), 500);
   }
 
   return (
@@ -83,13 +88,21 @@ export default function Login({ onLogin }) {
 
         <p className="subtitle">Sign in with your credentials.</p>
 
-
-
-        <div className="role-tabs">
-          <button type="button" className={`role-tab ${role === 'student' ? 'active' : ''}`} onClick={() => switchRole('student')}>
+        <div className={`role-tabs ${isSwapping ? 'swapping-effect' : ''}`}>
+          <button
+            type="button"
+            className={`role-tab ${role === 'student' ? 'water-type active' : 'dark-glass'}`}
+            onClick={() => switchRole('student')}
+          >
+            <span className="water-wave-glow" />
             Participant
           </button>
-          <button type="button" className={`role-tab ${role === 'teacher' ? 'active' : ''}`} onClick={() => switchRole('teacher')}>
+          <button
+            type="button"
+            className={`role-tab ${role === 'teacher' ? 'water-type active' : 'dark-glass'}`}
+            onClick={() => switchRole('teacher')}
+          >
+            <span className="water-wave-glow" />
             Organizer
           </button>
         </div>
@@ -151,16 +164,42 @@ export default function Login({ onLogin }) {
             </>
           )}
 
-          <button className="btn btn-primary" type="submit" disabled={loading}>
+          <button className="btn btn-primary btn-signin-pill" type="submit" disabled={loading}>
             {loading ? <><span className="spinner" /> Signing in…</> : 'Sign in →'}
           </button>
         </form>
 
-        <p className="hint-msg" style={{ marginTop: 18 }}>
-          {role === 'student'
-            ? "Developed by -CodeZone"
-            : "Use your assigned Teacher ID (teacher@1 – teacher@4) to sign in."}
-        </p>
+        <div
+          className="login-credit-card"
+          onClick={() => window.dispatchEvent(new CustomEvent('iru-trigger-intro'))}
+          title="Click card to view intro animation"
+        >
+          <div
+            className="login-credit-avatar"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.dispatchEvent(new CustomEvent('iru-open-photo'));
+            }}
+            title="Click photo to view full image"
+          >
+            <img
+              src="/image.png"
+              alt="Iru Profile"
+              className="login-credit-img"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextElementSibling) {
+                  e.currentTarget.nextElementSibling.style.display = 'flex';
+                }
+              }}
+            />
+            <div className="login-credit-fallback" style={{ display: 'none' }}>I</div>
+          </div>
+          <div className="login-credit-info">
+            <span className="login-credit-label">Developed by</span>
+            <span className="login-credit-name">iru</span>
+          </div>
+        </div>
       </div>
     </div>
   );

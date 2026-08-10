@@ -3,6 +3,7 @@ import Login from './components/Login.jsx';
 import StudentQuiz from './components/StudentQuiz.jsx';
 import TeacherDashboard from './components/TeacherDashboard.jsx';
 import BackgroundSlider from './components/BackgroundSlider.jsx';
+import DevelopedByIru from './components/DevelopedByIru.jsx';
 
 const SESSION_KEY = 'quiz_session_v1';
 
@@ -54,6 +55,7 @@ function App() {
       ) : (
         <StudentQuiz session={session} onLogout={handleLogout} />
       )}
+      <DevelopedByIru hideBadge={!session} />
     </>
   );
 }
