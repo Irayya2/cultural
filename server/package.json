@@ -1,0 +1,23 @@
+{
+  "name": "cultural-quiz-server",
+  "version": "1.0.0",
+  "description": "Weekly Quiz App API - Express Server for Render",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "seed": "node seed-teams.js",
+    "create-tables": "node create-tables.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "resend": "^6.18.0",
+    "uuid": "^14.0.1"
+  }
+}

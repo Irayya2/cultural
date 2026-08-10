@@ -7,9 +7,14 @@ const path = require('path');
 const fs = require('fs');
 
 if (!process.env.SUPABASE_URL) {
-  const dotenvPath = path.join(__dirname, '..', '.env');
-  if (fs.existsSync(dotenvPath)) {
-    require('dotenv').config({ path: dotenvPath });
+  const localDotenv = path.join(__dirname, '.env');
+  const parentDotenv = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(localDotenv)) {
+    require('dotenv').config({ path: localDotenv });
+  } else if (fs.existsSync(parentDotenv)) {
+    require('dotenv').config({ path: parentDotenv });
+  } else {
+    require('dotenv').config();
   }
 }
 

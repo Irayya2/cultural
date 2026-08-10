@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: weekly-quiz-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: TEACHER_EMAILS
+        value: ihiremath644@gmail.com,swamihiremath17@gmail.com,rajeshpattan585@gmail.com,kakatkarshivani@gmail.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        value: https://pdnveouohbhbgspwsmxd.supabase.co
+      - key: SUPABASE_KEY
+        sync: false
+      - key: NODE_OPTIONS
+        value: --dns-result-order=ipv4first

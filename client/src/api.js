@@ -4,7 +4,7 @@
 // e.g. VITE_API_URL=https://your-quiz-backend.onrender.com
 
 // Strip any trailing slash so that URL + "/api/..." never produces a double-slash (//)
-const API_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '')).replace(/\/+$/, '');
 
 async function request(path, { method = 'GET', body, token } = {}) {
   const headers = { 'Content-Type': 'application/json' };
