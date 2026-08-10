@@ -87,10 +87,10 @@ export default function Login({ onLogin }) {
 
         <div className="role-tabs">
           <button type="button" className={`role-tab ${role === 'student' ? 'active' : ''}`} onClick={() => switchRole('student')}>
-            🎓 Student
+            Participant
           </button>
           <button type="button" className={`role-tab ${role === 'teacher' ? 'active' : ''}`} onClick={() => switchRole('teacher')}>
-            📋 Teacher
+            Organizer
           </button>
         </div>
 
