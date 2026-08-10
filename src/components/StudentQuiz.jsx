@@ -32,23 +32,15 @@ const RULES = [
 
 function startedKey(quizId) { return `quiz-started-${quizId}`; }
 
-function getRollNoSemesters(uucmsNo) {
-  if (!uucmsNo) return null;
-  const clean = String(uucmsNo).trim().toUpperCase();
-  const match = clean.match(/^(24|25|26)BCA(\d{3})$/);
-  if (!match) return null;
-
-  const batch = match[1]; // "24", "25", "26"
-  const number = parseInt(match[2], 10);
-
-  if (number < 1 || number > 250) return null;
-
-  if (batch === '26') return [1];
-  if (batch === '25') return [3];
-  if (batch === '24') return [5];
-
-  return null;
+const BANNER_IMAGES = ['/1.png', '/2.png', '/3.png', '/4.png'];
+function getBannerImage(key = 1) {
+  const num = typeof key === 'number' ? key : (key ? String(key).length : 1);
+  const idx = Math.abs(num - 1) % BANNER_IMAGES.length;
+  return BANNER_IMAGES[idx];
 }
+
+
+
 
 function getWeeklyInterval(createdAt) {
   const startDate = new Date('2026-07-19T00:00:00');
@@ -75,18 +67,7 @@ function getWeeklyInterval(createdAt) {
 }
 
 export default function StudentQuiz({ session, onLogout }) {
-  const uucmsNo = session.uucmsNo || '';
-  const eligibleSemesters = getRollNoSemesters(uucmsNo) || [];
 
-  const [selectedSemester, setSelectedSemester] = useState(() => {
-    const saved = window.sessionStorage.getItem(`selected_semester_${session.email}`);
-    if (saved) {
-      const savedNum = Number(saved);
-      if (eligibleSemesters.includes(savedNum)) return savedNum;
-    }
-    if (eligibleSemesters.length === 1) return eligibleSemesters[0];
-    return null;
-  });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,6 +82,7 @@ export default function StudentQuiz({ session, onLogout }) {
   const [started, setStarted] = useState(false); // instructions gate
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showRemainingBanner, setShowRemainingBanner] = useState(false);
 
   const quizIdRef = useRef(null);
   const statusRef = useRef('in_progress');
@@ -116,10 +98,9 @@ export default function StudentQuiz({ session, onLogout }) {
   }, []);
 
   const loadQuiz = useCallback(async () => {
-    if (!selectedSemester) return;
     setLoading(true); setError('');
     try {
-      const data = await api.getActiveQuiz(session.token, selectedSemester);
+      const data = await api.getActiveQuiz(session.token);
       if (!data.quizSet) {
         setQuizSet(null);
       } else {
@@ -137,7 +118,7 @@ export default function StudentQuiz({ session, onLogout }) {
       }
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [session.token, selectedSemester]);
+  }, [session.token]);
 
   const reportMalpractice = useCallback(async (reason) => {
     // Only fire after student clicks "Start Quiz"
@@ -173,11 +154,9 @@ export default function StudentQuiz({ session, onLogout }) {
   }, [session.token]);
 
   useEffect(() => {
-    if (selectedSemester) {
-      loadQuiz();
-      loadHistory();
-    }
-  }, [loadQuiz, loadHistory, selectedSemester]);
+    loadQuiz();
+    loadHistory();
+  }, [loadQuiz, loadHistory]);
 
   // ── Malpractice listeners (only active after "Start Quiz") ────────────
   useEffect(() => {
@@ -206,17 +185,6 @@ export default function StudentQuiz({ session, onLogout }) {
     window.addEventListener('blur', handleBlur);
     return () => window.removeEventListener('blur', handleBlur);
   }, [reportMalpractice]);
-
-  function handleSemesterSelect(sem) {
-    setSelectedSemester(sem);
-    if (sem) {
-      window.sessionStorage.setItem(`selected_semester_${session.email}`, sem);
-    } else {
-      window.sessionStorage.removeItem(`selected_semester_${session.email}`);
-      setQuizSet(null);
-      setQuestions([]);
-    }
-  }
 
   function handleStartQuiz() {
     localStorage.setItem(startedKey(quizSet.id), '1');
@@ -265,11 +233,24 @@ export default function StudentQuiz({ session, onLogout }) {
   const resultsReleased = Date.now() >= releaseTime;
 
   const isLocked = status !== 'in_progress';
+
+  useEffect(() => {
+    if (isLocked) {
+      setShowRemainingBanner(false);
+      const timer = setTimeout(() => {
+        setShowRemainingBanner(true);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowRemainingBanner(false);
+    }
+  }, [isLocked]);
+
   const answeredCount = questions.filter(q => answers[q.id]?.trim()).length;
+
   const progress = questions.length ? (answeredCount / questions.length) * 100 : 0;
   const initials = session.email ? session.email[0].toUpperCase() : '?';
   const currentQ = questions[currentIdx];
-  const canChangeSemester = !started && !isLocked;
   const activeWeekInfo = quizSet && quizSet.createdAt ? getWeeklyInterval(quizSet.createdAt) : null;
 
   return (
@@ -289,21 +270,22 @@ export default function StudentQuiz({ session, onLogout }) {
         <div className="top-bar-user">
           <div className="avatar">{initials}</div>
           <div>
-            <div className="top-bar-role">Student {uucmsNo ? `(Roll No: ${uucmsNo})` : ''}</div>
-            <div className="top-bar-email">{session.email}</div>
+            <div className="top-bar-role">Team: {session.email}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {selectedSemester && (
-            <span className="badge" style={{ background: 'rgba(56,182,255,0.2)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.3)' }}>Sem {selectedSemester}</span>
-          )}
-          {canChangeSemester && eligibleSemesters.length > 1 && (
-            <button className="signout-link" onClick={() => handleSemesterSelect(null)}>Change Semester</button>
-          )}
+
           {quizSet && started && !isLocked && (
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{answeredCount}/{questions.length} answered</span>
           )}
-          <button className="signout-link" onClick={onLogout}>Sign out</button>
+          <button className="btn-logout" onClick={onLogout} title="Logout">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Logout
+          </button>
         </div>
       </div>
 
@@ -326,45 +308,12 @@ export default function StudentQuiz({ session, onLogout }) {
 
           {!loading && error && <div className="card card--full"><div className="error-msg">⚠ {error}</div></div>}
 
-          {!loading && !selectedSemester && eligibleSemesters.length > 0 && (
-            <div className="card" style={{ maxWidth: 480, width: '100%', textAlign: 'center', padding: '24px 24px 30px' }}>
-              <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>🎓</span>
-              <h2 className="title" style={{ fontSize: 20, marginBottom: 8 }}>Select Your Semester</h2>
-              <p className="subtitle" style={{ marginBottom: 24, fontSize: 13.5 }}>
-                Your Roll number ({uucmsNo}) maps to multiple semesters. Please select the correct semester to proceed:
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {eligibleSemesters.map((sem) => (
-                  <button
-                    key={sem}
-                    className="btn btn-primary"
-                    style={{ padding: '14px', fontSize: 15, fontWeight: 700 }}
-                    onClick={() => handleSemesterSelect(sem)}
-                  >
-                    Semester {sem}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!loading && eligibleSemesters.length === 0 && (
-            <div className="card" style={{ maxWidth: 480, width: '100%', textAlign: 'center', padding: '24px 24px 30px' }}>
-              <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>⚠️</span>
-              <h2 className="title" style={{ fontSize: 20, color: 'var(--danger)', marginBottom: 8 }}>Access Denied</h2>
-              <p className="subtitle" style={{ marginBottom: 24, fontSize: 13.5 }}>
-                Your Roll number ({uucmsNo || 'None'}) is not recognized or does not map to semesters 1-6. Please log out and check your credentials.
-              </p>
-              <button className="btn btn-ghost" onClick={onLogout}>Sign out</button>
-            </div>
-          )}
-
-          {!loading && selectedSemester && !quizSet && !error && (
+          {!loading && !quizSet && !error && (
             <div className="card" style={{ maxWidth: 480, width: '100%', padding: 0 }}>
               <div className="no-quiz-card">
                 <span className="no-quiz-icon">📭</span>
                 <div className="no-quiz-title">No quiz right now</div>
-                <p className="no-quiz-sub">Your teacher hasn't posted this week's questions for Semester {selectedSemester} yet. Check back soon!</p>
+                <p className="no-quiz-sub">Your teacher hasn't posted an active quiz set yet. Check back soon!</p>
                 <button className="btn btn-ghost btn-sm" style={{ marginTop: 20, width: 'auto', padding: '10px 20px' }} onClick={loadQuiz}>Refresh</button>
               </div>
             </div>
@@ -374,120 +323,139 @@ export default function StudentQuiz({ session, onLogout }) {
             isLocked ? (
               /* ── Submitted / auto-submitted result ── */
               <div className="question-card">
-                  <div className="question-body">
-                    {status === 'auto_submitted' ? (
-                      <div className="banner-locked danger">
-                        <span className="banner-locked-icon">⛔</span>
-                        <strong style={{ fontSize: 18 }}>Quiz auto-submitted</strong>
-                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
-                          {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
-                        </div>
-                        <p>Your answers were automatically submitted after 3 malpractice detections.</p>
-                        {scorePct !== null && (
-                          <div style={{ marginTop: 16, padding: '14px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: 10, textAlign: 'center' }}>
-                            <div style={{ fontSize: 36, fontWeight: 700, color: scoreColor(scorePct) }}>{score}/{gradableQuestions.length}</div>
-                            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Your score ({scorePct}%)</div>
-                          </div>
-                        )}
-                        <p style={{ fontSize: 13, opacity: 0.7, marginTop: 8 }}>Contact your teacher if this was a mistake.</p>
+                <div className="question-body">
+                  {/* Banner 1: Header / Submission Status (Always visible immediately) */}
+                  {status === 'auto_submitted' ? (
+                    <div className="banner-locked danger">
+                      <span className="banner-locked-icon">⛔</span>
+                      <strong style={{ fontSize: 18 }}>Quiz auto-submitted</strong>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
+                        {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
                       </div>
-                    ) : (
-                      <div className="banner-locked success">
-                        <span className="banner-locked-icon">{scorePct !== null ? scoreEmoji(scorePct) : '✅'}</span>
-                        <strong style={{ fontSize: 20 }}>Quiz submitted!</strong>
-                        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 12 }}>
-                          {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                      <p>Your answers were automatically submitted after 3 malpractice detections.</p>
+                      {scorePct !== null && (
+                        <div style={{ marginTop: 16, padding: '14px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: 10, textAlign: 'center' }}>
+                          <div style={{ fontSize: 36, fontWeight: 700, color: scoreColor(scorePct) }}>{score}/{gradableQuestions.length}</div>
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Your score ({scorePct}%)</div>
                         </div>
+                      )}
+                      <p style={{ fontSize: 13, opacity: 0.7, marginTop: 8 }}>Contact your teacher if this was a mistake.</p>
+                    </div>
+                  ) : (
+                    <div className="banner-locked success">
+                      <span className="banner-locked-icon">{scorePct !== null ? scoreEmoji(scorePct) : '✅'}</span>
+                      <strong style={{ fontSize: 20 }}>Quiz submitted!</strong>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 4 }}>
+                        {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                      </div>
+                    </div>
+                  )}
 
-                        {scorePct !== null && (
-                          <div style={{ width: '100%', marginTop: 8 }}>
-                            {/* Big score block */}
-                            <div style={{ textAlign: 'center', padding: '22px 16px', background: 'rgba(0,0,0,0.2)', borderRadius: 12, marginBottom: 16 }}>
-                              <div style={{ fontSize: 56, fontWeight: 800, color: scoreColor(scorePct), lineHeight: 1 }}>{score}</div>
-                              <div style={{ fontSize: 15, color: 'var(--text-soft)', marginTop: 4 }}>out of {gradableQuestions.length} correct</div>
-                              <div style={{ marginTop: 12, height: 8, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${scorePct}%`, background: `linear-gradient(90deg,${scoreColor(scorePct)},${scoreColor(scorePct)}99)`, borderRadius: 99, transition: 'width 0.8s ease' }} />
-                              </div>
-                              <div style={{ fontSize: 26, fontWeight: 700, color: scoreColor(scorePct), marginTop: 8 }}>{scorePct}%</div>
+                  {/* Banner 2: Remaining Banner (Score Breakdown & Analysis - Comes after 2 seconds effect) */}
+                  {!showRemainingBanner ? (
+                    <div style={{ marginTop: 16, width: '100%', padding: '24px 20px', background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                      <div className="spinner spinner-dark" style={{ width: 28, height: 28, borderWidth: 3, marginBottom: 12 }} />
+                      <strong style={{ fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>Calculating Full Performance Breakdown…</strong>
+                      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
+                        The remaining score banner & question details will load in 2 seconds
+                      </p>
+                      <div style={{ width: 180, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
+                        <div className="banner-delay-bar" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="banner-remaining-entrance" style={{ width: '100%', marginTop: 16 }}>
+
+
+                      {scorePct !== null && (
+                        <div style={{ width: '100%' }}>
+                          {/* Big score block */}
+                          <div style={{ textAlign: 'center', padding: '22px 16px', background: 'rgba(0,0,0,0.2)', borderRadius: 12, marginBottom: 16 }}>
+                            <div style={{ fontSize: 56, fontWeight: 800, color: scoreColor(scorePct), lineHeight: 1 }}>{score}</div>
+                            <div style={{ fontSize: 15, color: 'var(--text-soft)', marginTop: 4 }}>out of {gradableQuestions.length} correct</div>
+                            <div style={{ marginTop: 12, height: 8, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${scorePct}%`, background: `linear-gradient(90deg,${scoreColor(scorePct)},${scoreColor(scorePct)}99)`, borderRadius: 99, transition: 'width 0.8s ease' }} />
                             </div>
+                            <div style={{ fontSize: 26, fontWeight: 700, color: scoreColor(scorePct), marginTop: 8 }}>{scorePct}%</div>
+                          </div>
 
-                            {/* Motivational message */}
-                            <div style={{ padding: '14px 18px', borderRadius: 10, marginBottom: 16, textAlign: 'center', background: scorePct === 100 ? 'rgba(34,197,94,0.1)' : scorePct >= 80 ? 'rgba(56,182,255,0.1)' : scorePct >= 60 ? 'rgba(245,158,11,0.08)' : scorePct >= 40 ? 'rgba(56,182,255,0.06)' : 'rgba(244,63,94,0.07)', border: `1px solid ${scorePct === 100 ? 'rgba(34,197,94,0.25)' : scorePct >= 80 ? 'rgba(56,182,255,0.25)' : scorePct >= 60 ? 'rgba(245,158,11,0.2)' : scorePct >= 40 ? 'rgba(56,182,255,0.15)' : 'rgba(244,63,94,0.15)'}` }}>
-                              {scorePct === 100 && <>
-                                <div style={{ fontSize: 22, marginBottom: 6 }}>🏆</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--success)', marginBottom: 4 }}>Perfect score — you nailed it!</div>
-                                <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>Outstanding! You got every single question right. Your hard work and focus really paid off today. Keep it up!</div>
-                              </>}
-                              {scorePct >= 80 && scorePct < 100 && <>
-                                <div style={{ fontSize: 22, marginBottom: 6 }}>🎉</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent-bright)', marginBottom: 4 }}>Excellent work!</div>
-                                <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>You did really well! A few small mistakes here and there, but overall you clearly understand the material. Keep pushing and you'll hit that 100 soon!</div>
-                              </>}
-                              {scorePct >= 60 && scorePct < 80 && <>
-                                <div style={{ fontSize: 22, marginBottom: 6 }}>👍</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--warn)', marginBottom: 4 }}>Good effort — you're on the right track!</div>
-                                <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>Not bad at all! You got more than half right. Review the ones you missed, understand where you went wrong, and you'll do even better next time.</div>
-                              </>}
-                              {scorePct >= 40 && scorePct < 60 && <>
-                                <div style={{ fontSize: 22, marginBottom: 6 }}>📚</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent-bright)', marginBottom: 4 }}>Keep going — don't give up!</div>
-                                <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>This is a learning moment. Look at the answers below, figure out what you missed, and revise those topics. Every quiz makes you stronger!</div>
-                              </>}
-                              {scorePct < 40 && <>
-                                <div style={{ fontSize: 22, marginBottom: 6 }}>💪</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--danger)', marginBottom: 4 }}>It's okay — every expert was once a beginner!</div>
-                                <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>This quiz was tough, but that's how we grow. Go through each answer below carefully, ask your teacher for help on anything unclear, and come back stronger next time!</div>
-                              </>}
-                            </div>
+                          {/* Motivational message */}
+                          <div style={{ padding: '14px 18px', borderRadius: 10, marginBottom: 16, textAlign: 'center', background: scorePct === 100 ? 'rgba(34,197,94,0.1)' : scorePct >= 80 ? 'rgba(56,182,255,0.1)' : scorePct >= 60 ? 'rgba(245,158,11,0.08)' : scorePct >= 40 ? 'rgba(56,182,255,0.06)' : 'rgba(244,63,94,0.07)', border: `1px solid ${scorePct === 100 ? 'rgba(34,197,94,0.25)' : scorePct >= 80 ? 'rgba(56,182,255,0.25)' : scorePct >= 60 ? 'rgba(245,158,11,0.2)' : scorePct >= 40 ? 'rgba(56,182,255,0.15)' : 'rgba(244,63,94,0.15)'}` }}>
+                            {scorePct === 100 && <>
+                              <div style={{ fontSize: 22, marginBottom: 6 }}>🏆</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--success)', marginBottom: 4 }}>Perfect score — you nailed it!</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>Outstanding! You got every single question right. Your hard work and focus really paid off today. Keep it up!</div>
+                            </>}
+                            {scorePct >= 80 && scorePct < 100 && <>
+                              <div style={{ fontSize: 22, marginBottom: 6 }}>🎉</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent-bright)', marginBottom: 4 }}>Excellent work!</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>You did really well! A few small mistakes here and there, but overall you clearly understand the material. Keep pushing and you'll hit that 100 soon!</div>
+                            </>}
+                            {scorePct >= 60 && scorePct < 80 && <>
+                              <div style={{ fontSize: 22, marginBottom: 6 }}>👍</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--warn)', marginBottom: 4 }}>Good effort — you're on the right track!</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>Not bad at all! You got more than half right. Review the ones you missed, understand where you went wrong, and you'll do even better next time.</div>
+                            </>}
+                            {scorePct >= 40 && scorePct < 60 && <>
+                              <div style={{ fontSize: 22, marginBottom: 6 }}>📚</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent-bright)', marginBottom: 4 }}>Keep going — don't give up!</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>This is a learning moment. Look at the answers below, figure out what you missed, and revise those topics. Every quiz makes you stronger!</div>
+                            </>}
+                            {scorePct < 40 && <>
+                              <div style={{ fontSize: 22, marginBottom: 6 }}>💪</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--danger)', marginBottom: 4 }}>It's okay — every expert was once a beginner!</div>
+                              <div style={{ fontSize: 13, color: 'var(--text-soft)', lineHeight: 1.55 }}>This quiz was tough, but that's how we grow. Go through each answer below carefully, ask your teacher for help on anything unclear, and come back stronger next time!</div>
+                            </>}
+                          </div>
 
-                            {/* Per-question breakdown */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {questions.map((q, i) => {
-                                const studentAnswer = answers[q.id];
-                                const isCorrect = q.correctAnswer && studentAnswer === q.correctAnswer;
-                                const isWrong = q.correctAnswer && studentAnswer && studentAnswer !== q.correctAnswer;
-                                return (
-                                  <div key={q.id} style={{ padding: '10px 14px', borderRadius: 8, background: isCorrect ? 'rgba(34,197,94,0.08)' : isWrong ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.2)' : isWrong ? 'rgba(244,63,94,0.15)' : 'var(--border)'}` }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                                      <span style={{ fontSize: 18, flexShrink: 0 }}>{isCorrect ? '✅' : isWrong ? '❌' : '⬜'}</span>
-                                      <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Q{i + 1}. {q.text}</div>
-                                        <div style={{ fontSize: 12.5 }}>
-                                          <span style={{ color: 'var(--text-muted)' }}>Your answer: </span>
-                                          <span style={{ color: isCorrect ? 'var(--success)' : isWrong ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 500 }}>
-                                            {studentAnswer || 'Not answered'}
-                                          </span>
-                                        </div>
-                                        {isWrong && q.correctAnswer && (
-                                          <div style={{ fontSize: 12.5, marginTop: 2 }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Correct: </span>
-                                            <span style={{ color: 'var(--success)', fontWeight: 500 }}>{q.correctAnswer}</span>
-                                          </div>
-                                        )}
+                          {/* Per-question breakdown */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {questions.map((q, i) => {
+                              const studentAnswer = answers[q.id];
+                              const isCorrect = q.correctAnswer && studentAnswer === q.correctAnswer;
+                              const isWrong = q.correctAnswer && studentAnswer && studentAnswer !== q.correctAnswer;
+                              return (
+                                <div key={q.id} style={{ padding: '10px 14px', borderRadius: 8, background: isCorrect ? 'rgba(34,197,94,0.08)' : isWrong ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isCorrect ? 'rgba(34,197,94,0.2)' : isWrong ? 'rgba(244,63,94,0.15)' : 'var(--border)'}` }}>
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                    <span style={{ fontSize: 18, flexShrink: 0 }}>{isCorrect ? '✅' : isWrong ? '❌' : '⬜'}</span>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Q{i + 1}. {q.text}</div>
+                                      <div style={{ fontSize: 12.5 }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Your answer: </span>
+                                        <span style={{ color: isCorrect ? 'var(--success)' : isWrong ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 500 }}>
+                                          {studentAnswer || 'Not answered'}
+                                        </span>
                                       </div>
+                                      {isWrong && q.correctAnswer && (
+                                        <div style={{ fontSize: 12.5, marginTop: 2 }}>
+                                          <span style={{ color: 'var(--text-muted)' }}>Correct: </span>
+                                          <span style={{ color: 'var(--success)', fontWeight: 500 }}>{q.correctAnswer}</span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
-                                );
-                              })}
-                            </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        )}
-
-                        {scorePct === null && <p style={{ margin: '8px 0 0', fontSize: 13.5, color: 'var(--text-soft)' }}>Your answers are in — well done for completing it!</p>}
-
-                        {/* gcc_code_zone branding footer */}
-                        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)', width: '100%', textAlign: 'center' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 99, background: 'rgba(56,182,255,0.10)', border: '1px solid rgba(56,182,255,0.22)' }}>
-                            <span style={{ fontSize: 15 }}>⚡</span>
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent-bright)', letterSpacing: '0.04em' }}>gcc_code_zone</span>
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>team</span>
-                          </div>
-                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>Wishing you success in every step of your journey 🚀</div>
                         </div>
-                      </div>
-                    )}
+                      )}
+
+                      {scorePct === null && <p style={{ margin: '8px 0 0', fontSize: 13.5, color: 'var(--text-soft)' }}>Your answers are in — well done for completing it!</p>}
+                    </div>
+                  )}
+
+                  {/* gcc_code_zone branding footer */}
+                  <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--border)', width: '100%', textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 18px', borderRadius: 99, background: 'rgba(56,182,255,0.10)', border: '1px solid rgba(56,182,255,0.22)' }}>
+                      <span style={{ fontSize: 15 }}>⚡</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent-bright)', letterSpacing: '0.04em' }}>gcc_code_zone</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>team</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 6 }}>Wishing you success in every step of your journey 🚀</div>
                   </div>
                 </div>
+              </div>
             ) : !started ? (
               /* ── Instructions page ── */
               <div className="question-card" style={{ maxWidth: 560, width: '100%' }}>
@@ -501,8 +469,10 @@ export default function StudentQuiz({ session, onLogout }) {
                     </p>
                   </div>
 
+
+
                   {/* Quiz info strip */}
-                  <div style={{ display: 'flex', gap: 12, marginBottom: 24, padding: '12px 16px', background: 'rgba(56,182,255,0.08)', border: '1px solid rgba(56,182,255,0.2)', borderRadius: 10 }}>
+                  <div className="quiz-info-banner">
                     <div style={{ flex: 1, textAlign: 'center' }}>
                       <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-bright)' }}>{questions.length}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Questions</div>
@@ -519,7 +489,7 @@ export default function StudentQuiz({ session, onLogout }) {
                   </div>
 
                   {/* Rules grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28 }}>
+                  <div className="quiz-rules-grid">
                     {RULES.map((rule, i) => (
                       <div key={i} style={{ padding: '12px 13px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 9 }}>
                         <div style={{ fontSize: 18, marginBottom: 6 }}>{rule.icon}</div>
@@ -621,18 +591,7 @@ export default function StudentQuiz({ session, onLogout }) {
                     : '—';
                   const weekInfo = (h.createdAt || h.submittedAt) ? getWeeklyInterval(h.createdAt || h.submittedAt) : null;
                   return (
-                    <div
-                      key={h.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '12px 14px',
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 10
-                      }}
-                    >
+                    <div key={h.id} className="history-item-row">
                       <div style={{ textAlign: 'left' }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
                           {weekInfo ? `Week ${weekInfo.weekNum} (${weekInfo.rangeStr}) · ` : ''}{h.quizTitle}

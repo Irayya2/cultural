@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Login from './components/Login';
 import StudentQuiz from './components/StudentQuiz';
 import TeacherDashboard from './components/TeacherDashboard';
+import BackgroundSlider from './components/BackgroundSlider';
 
 const SESSION_KEY = 'quiz_session_v1';
 
@@ -14,12 +15,22 @@ function App() {
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem(SESSION_KEY);
-      if (raw) setSession(JSON.parse(raw));
+      if (raw) {
+        const saved = JSON.parse(raw);
+        // Discard legacy / fake tokens — a real JWT has exactly 3 dot-separated parts
+        const isRealJwt = saved?.token && saved.token.split('.').length === 3;
+        if (isRealJwt) {
+          setSession(saved);
+        } else {
+          window.sessionStorage.removeItem(SESSION_KEY);
+        }
+      }
     } catch {
       // ignore corrupt storage
     }
     setReady(true);
   }, []);
+
 
   function handleLogin(newSession) {
     setSession(newSession);
@@ -33,15 +44,19 @@ function App() {
 
   if (!ready) return null;
 
-  if (!session) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  if (session.role === 'teacher') {
-    return <TeacherDashboard session={session} onLogout={handleLogout} />;
-  }
-
-  return <StudentQuiz session={session} onLogout={handleLogout} />;
+  return (
+    <>
+      <BackgroundSlider />
+      {!session ? (
+        <Login onLogin={handleLogin} />
+      ) : session.role === 'teacher' ? (
+        <TeacherDashboard session={session} onLogout={handleLogout} />
+      ) : (
+        <StudentQuiz session={session} onLogout={handleLogout} />
+      )}
+    </>
+  );
 }
 
 export default App;
+

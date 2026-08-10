@@ -34,3 +34,4 @@ client/dist/
 *.njsproj
 *.sln
 *.sw?
+scratch/

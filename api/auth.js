@@ -3,11 +3,6 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-this-in-production';
-const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
-
-function generateOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000)); // 6-digit code
-}
 
 function createToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '12h' });
@@ -46,11 +41,9 @@ function requireTeacher(req, res, next) {
 }
 
 module.exports = {
-  generateOtp,
   createToken,
   verifyToken,
   requireStudent,
   requireTeacher,
-  OTP_EXPIRY_MS,
   uuidv4,
 };

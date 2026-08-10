@@ -39,12 +39,10 @@ async function request(path, { method = 'GET', body, token } = {}) {
 }
 
 export const api = {
-  requestOtp: (email, role) => request('/api/otp/request', { method: 'POST', body: { email, role } }),
-  verifyOtp: (email, role, code, name, uucmsNo) =>
-    request('/api/otp/verify', { method: 'POST', body: { email, role, code, name, uucmsNo } }),
+  login: (payload) => request('/api/auth/login', { method: 'POST', body: payload }),
 
   // student
-  getActiveQuiz: (token, semester) => request(`/api/student/quiz/active?semester=${semester}`, { token }),
+  getActiveQuiz: (token) => request(`/api/student/quiz/active`, { token }),
   getQuizHistory: (token) => request('/api/student/quiz/history', { token }),
   saveAnswer: (token, quizId, questionId, answer) =>
     request(`/api/student/quiz/${quizId}/answer`, { method: 'POST', token, body: { questionId, answer } }),
@@ -54,8 +52,8 @@ export const api = {
     request(`/api/student/quiz/${quizId}/submit`, { method: 'POST', token }),
 
   // teacher
-  createQuiz: (token, title, questions, semester) =>
-    request('/api/teacher/quiz', { method: 'POST', token, body: { title, questions, semester } }),
+  createQuiz: (token, title, questions) =>
+    request('/api/teacher/quiz', { method: 'POST', token, body: { title, questions } }),
   listQuizzes: (token) => request('/api/teacher/quiz', { token }),
   getAttempts: (token, quizId) => request(`/api/teacher/quiz/${quizId}/attempts`, { token }),
   resetAttempt: (token, quizId, studentId) =>

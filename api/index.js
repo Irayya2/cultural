@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const ExcelJS = require('exceljs');
+const bcrypt = require('bcryptjs');
 
 // Load .env only in local development (not on Vercel where env vars are set in dashboard)
 if (process.env.NODE_ENV !== 'production') {
@@ -14,14 +15,11 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const { initDb, supabase } = require('./db');
-const { sendOtpEmail } = require('./mailer');
 const { seededShuffle } = require('./shuffle');
 const {
-  generateOtp,
   createToken,
   requireStudent,
   requireTeacher,
-  OTP_EXPIRY_MS,
   uuidv4,
 } = require('./auth');
 
@@ -46,23 +44,7 @@ const TEACHER_EMAILS = (process.env.TEACHER_EMAILS || '')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-function getRollNoSemesters(uucmsNo) {
-  if (!uucmsNo) return null;
-  const clean = String(uucmsNo).trim().toUpperCase();
-  const match = clean.match(/^(24|25|26)BCA(\d{3})$/);
-  if (!match) return null;
-  
-  const batch = match[1]; // "24", "25", "26"
-  const number = parseInt(match[2], 10);
-  
-  if (number < 1 || number > 250) return null;
-  
-  if (batch === '26') return [1];
-  if (batch === '25') return [3];
-  if (batch === '24') return [5];
-  
-  return null;
-}
+
 
 function normalizeQuizQuestion(question, fallbackTimeLimit = 72) {
   if (typeof question === 'string') {
@@ -87,136 +69,179 @@ function normalizeQuizQuestion(question, fallbackTimeLimit = 72) {
 }
 
 // Map snake_case to camelCase for the frontend
-const mapQuizSet = (q) => ({
-  id: q.id,
-  title: q.title,
-  semester: q.semester,
-  questions: q.questions,
-  isActive: q.is_active,
-  createdAt: q.created_at,
-  timeLimitSec: q.questions[0]?.timeLimitSec || 72,
-});
-
-// ---------- OTP: request ----------
-app.post('/api/otp/request', async (req, res) => {
-  const { email, role } = req.body;
-  if (!email || !role) return res.status(400).json({ error: 'Email and role are required' });
-  const normalizedEmail = String(email).trim().toLowerCase();
-
-  if (role === 'teacher' && !TEACHER_EMAILS.includes(normalizedEmail)) {
-    return res.status(403).json({ error: 'This email is not registered as a teacher account' });
-  }
-
-  const code = generateOtp();
-  const expiresAt = Date.now() + OTP_EXPIRY_MS;
-
-  // remove previous unconsumed OTPs
-  await supabase.from('otps').delete().match({ email: normalizedEmail, role, used: false });
-  
-  const { error } = await supabase.from('otps').insert({ 
-    id: uuidv4(), 
-    email: normalizedEmail, 
-    code, 
-    role, 
-    expires_at: expiresAt, 
-    used: false 
-  });
-  
-  if (error) {
-    console.error("Supabase OTP Insert Error:", JSON.stringify(error, null, 2));
-    return res.status(500).json({ error: 'Failed to generate OTP in DB', details: error.message });
-  }
-
-  try {
-    await sendOtpEmail(normalizedEmail, code, role);
-    res.json({ ok: true, message: 'OTP sent to email' });
-  } catch (err) {
-    console.error('Failed to send OTP email:', err.message);
-    console.log(`[OTP FALLBACK] OTP for ${normalizedEmail} (${role}): ${code}`);
-    res.json({ ok: true, message: 'OTP generated, but email delivery failed. Check server logs for the code.' });
-  }
-});
-
-// ---------- OTP: verify ----------
-app.post('/api/otp/verify', async (req, res) => {
-  const { email, role, code, name, uucmsNo } = req.body;
-  if (!email || !role || !code) return res.status(400).json({ error: 'Missing fields' });
-  const normalizedEmail = String(email).trim().toLowerCase();
-
-  let finalUucmsNo = undefined;
-
-  if (role === 'student') {
-    if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
-    if (!uucmsNo || !uucmsNo.trim()) return res.status(400).json({ error: 'Roll number is required' });
-    
-    const semesters = getRollNoSemesters(uucmsNo);
-    if (!semesters) {
-      return res.status(400).json({ error: 'Invalid Roll Number format or range (Must be 26BCA001-26BCA250, 25BCA001-25BCA250, or 24BCA001-24BCA250)' });
+const mapQuizSet = (q) => {
+  if (!q) return null;
+  let questions = [];
+  if (Array.isArray(q.questions)) {
+    questions = q.questions;
+  } else if (typeof q.questions === 'string') {
+    try {
+      questions = JSON.parse(q.questions);
+    } catch (e) {
+      questions = [];
     }
-    finalUucmsNo = uucmsNo.trim().toUpperCase();
   }
+  const firstTimeLimit = Array.isArray(questions) && questions[0] ? Number(questions[0].timeLimitSec) : NaN;
+  return {
+    id: q.id,
+    title: q.title || 'Untitled Quiz',
+    semester: q.semester ?? null,
+    questions: Array.isArray(questions) ? questions : [],
+    isActive: Boolean(q.is_active),
+    createdAt: q.created_at ? (typeof q.created_at === 'number' ? q.created_at : (isNaN(new Date(q.created_at).getTime()) ? Date.now() : new Date(q.created_at).getTime())) : Date.now(),
+    timeLimitSec: Number.isFinite(firstTimeLimit) ? firstTimeLimit : 72,
+  };
+};
 
-  const { data: otps } = await supabase
-    .from('otps')
-    .select('*')
-    .match({ email: normalizedEmail, role, used: false })
-    .order('expires_at', { ascending: false })
-    .limit(1);
-
-  if (!otps || otps.length === 0) {
-    return res.status(400).json({ error: 'No active OTP requested for this email. Please request a new one.' });
-  }
-  
-  const otpRecord = otps[0];
-  if (otpRecord.code !== String(code).trim()) return res.status(400).json({ error: 'Incorrect OTP' });
-  if (Date.now() > otpRecord.expires_at) return res.status(400).json({ error: 'OTP expired. Please request a new one.' });
-
-  await supabase.from('otps').update({ used: true }).match({ id: otpRecord.id });
-
-  let userId;
+// ---------- Auth: Login / Register ----------
+app.post('/api/auth/login', async (req, res) => {
+  const { role } = req.body;
+  if (!role) return res.status(400).json({ error: 'Role is required' });
 
   if (role === 'student') {
-    const { data: students } = await supabase.from('students').select('*').eq('email', normalizedEmail).limit(1);
-    
-    if (!students || students.length === 0) {
-      userId = uuidv4();
-      await supabase.from('students').insert({ 
-        id: userId, 
-        email: normalizedEmail, 
-        name: name.trim(), 
-        uucms_no: finalUucmsNo, 
-        created_at: Date.now() 
-      });
+    const { teamName, password, semester } = req.body;
+    if (!teamName || !teamName.trim()) return res.status(400).json({ error: 'Team name/number is required' });
+    if (!password || !password.trim()) return res.status(400).json({ error: 'Password is required' });
+
+    const rawTeam = String(teamName).trim();
+    const digits = rawTeam.replace(/\D/g, '');
+    const teamNum = digits ? parseInt(digits, 10) : null;
+
+    let canonicalEmail = rawTeam.toUpperCase();
+    let expectedPassword = null;
+
+    if (teamNum !== null && teamNum >= 1 && teamNum <= 48) {
+      canonicalEmail = `TEAM ${teamNum}`;
+      expectedPassword = `Team@${String(teamNum).padStart(3, '0')}`;
+    }
+
+    // Search by team_number or email or team_name
+    let query = supabase.from('students').select('*');
+    if (teamNum !== null) {
+      query = query.or(`team_number.eq.${teamNum},email.eq."${canonicalEmail}",email.eq."TEAM${teamNum}",email.eq."${rawTeam.toUpperCase()}"`);
     } else {
-      userId = students[0].id;
-      await supabase.from('students').update({ 
-        name: name.trim(), 
-        uucms_no: finalUucmsNo 
-      }).match({ id: userId });
+      query = query.or(`email.eq."${rawTeam.toUpperCase()}",team_name.ilike."${rawTeam}"`);
     }
-  } else {
+
+    const { data: students } = await query.limit(1);
+
+    let student;
+    if (!students || students.length === 0) {
+      // Auto-register team if missing
+      const semNum = Number(semester) && Number(semester) >= 1 && Number(semester) <= 6 ? Number(semester) : 1;
+      const userId = uuidv4();
+      const pwdToHash = expectedPassword || password.trim();
+      const hashedPassword = await bcrypt.hash(pwdToHash, 10);
+      const newStudent = {
+        id: userId,
+        team_number: teamNum || 1,
+        team_name: teamNum ? `Team ${teamNum}` : rawTeam,
+        email: canonicalEmail,
+        password_hash: hashedPassword,
+        uucms_no: `${semNum}::${hashedPassword}`,
+        semester: semNum,
+        created_at: new Date().toISOString()
+      };
+      
+      let { error } = await supabase.from('students').insert(newStudent);
+      if (error && error.message.includes('column')) {
+        // Fallback for legacy schema
+        const fallback = {
+          id: userId,
+          team_number: teamNum || 1,
+          team_name: teamNum ? `Team ${teamNum}` : rawTeam,
+          email: canonicalEmail,
+          password_hash: hashedPassword,
+          uucms_no: `${semNum}::${hashedPassword}`,
+          semester: semNum,
+          created_at: new Date().toISOString()
+        };
+        const res = await supabase.from('students').insert(fallback);
+        error = res.error;
+      }
+
+      if (error) {
+        return res.status(500).json({ error: 'Registration failed: ' + error.message });
+      }
+      student = newStudent;
+    } else {
+      student = students[0];
+    }
+
+    // Password validation using password_hash or fallback uucms_no
+    const trimmedInputPassword = password.trim();
+    let isMatch = false;
+
+    if (expectedPassword && trimmedInputPassword === expectedPassword) {
+      isMatch = true;
+    } else if (student.password_hash) {
+      isMatch = await bcrypt.compare(trimmedInputPassword, student.password_hash);
+    } else {
+      const uucmsNo = student.uucms_no || '';
+      const parts = uucmsNo.split('::');
+      if (parts.length >= 2) {
+        isMatch = await bcrypt.compare(trimmedInputPassword, parts[1]);
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Incorrect password for this team' });
+    }
+
+    const tokenPayload = { 
+      id: student.id, 
+      email: student.email, 
+      role: 'student', 
+      teamNumber: student.team_number || teamNum,
+      teamName: student.team_name || rawTeam
+    };
+    const token = createToken(tokenPayload);
+    return res.json({ 
+      ok: true, 
+      token, 
+      role: 'student', 
+      email: student.email,
+      teamNumber: student.team_number || teamNum,
+      teamName: student.team_name || rawTeam
+    });
+
+  } else if (role === 'teacher') {
+    const { email, password } = req.body;
+    if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });
+    if (!password || !password.trim()) return res.status(400).json({ error: 'Password is required' });
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    if (!TEACHER_EMAILS.includes(normalizedEmail)) {
+      return res.status(403).json({ error: 'This email is not registered as a teacher account' });
+    }
+
+    // Verify against TEACHER_PASSWORD env var or fallback
+    const expectedPassword = process.env.TEACHER_PASSWORD || 'admin123';
+    if (password.trim() !== expectedPassword) {
+      return res.status(400).json({ error: 'Incorrect password' });
+    }
+
+    // Check if teacher exists in DB, otherwise insert
     const { data: teachers } = await supabase.from('teachers').select('*').eq('email', normalizedEmail).limit(1);
-    
+    let userId;
     if (!teachers || teachers.length === 0) {
       userId = uuidv4();
-      await supabase.from('teachers').insert({ 
-        id: userId, 
-        email: normalizedEmail, 
-        name: name || normalizedEmail 
+      await supabase.from('teachers').insert({
+        id: userId,
+        email: normalizedEmail,
+        name: normalizedEmail.split('@')[0]
       });
     } else {
       userId = teachers[0].id;
-      if (name) {
-        await supabase.from('teachers').update({ name: name.trim() }).match({ id: userId });
-      }
     }
+
+    const tokenPayload = { id: userId, email: normalizedEmail, role: 'teacher' };
+    const token = createToken(tokenPayload);
+    return res.json({ ok: true, token, role: 'teacher', email: normalizedEmail });
   }
 
-  const tokenPayload = { id: userId, email: normalizedEmail, role };
-  if (role === 'student') tokenPayload.uucmsNo = finalUucmsNo;
-
-  const token = createToken(tokenPayload);
-  res.json({ ok: true, token, role });
+  return res.status(400).json({ error: 'Invalid role' });
 });
 
 // ======================================================================
@@ -229,12 +254,10 @@ app.post('/api/teacher/quiz', requireTeacher, async (req, res) => {
     return res.status(400).json({ error: 'Title and at least one question are required' });
   }
 
-  const semesterNum = Number(semester);
-  if (!semester || isNaN(semesterNum) || semesterNum < 1 || semesterNum > 6) {
-    return res.status(400).json({ error: 'Valid Semester (1 to 6) is required' });
-  }
+  const semNum = Number(semester) && Number(semester) >= 1 && Number(semester) <= 6 ? Number(semester) : 1;
 
-  await supabase.from('quiz_sets').update({ is_active: false }).eq('semester', semesterNum);
+  // Deactivate ALL currently active quizzes before posting a new one
+  await supabase.from('quiz_sets').update({ is_active: false }).eq('is_active', true);
 
   const normalizedQuestions = questions
     .map((q) => normalizeQuizQuestion(q, 72))
@@ -250,9 +273,9 @@ app.post('/api/teacher/quiz', requireTeacher, async (req, res) => {
   const quizSet = {
     id: uuidv4(),
     title,
-    semester: semesterNum,
+    semester: semNum,
     questions: normalizedQuestions,
-    created_at: Date.now(),
+    created_at: new Date().toISOString(),
     is_active: true,
   };
   
@@ -336,9 +359,23 @@ app.post('/api/teacher/generate-questions', requireTeacher, async (req, res) => 
 
 
 app.get('/api/teacher/quiz', requireTeacher, async (req, res) => {
-  const { data: quizSets, error } = await supabase.from('quiz_sets').select('*').order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: 'Failed to fetch quizzes' });
-  res.json({ quizSets: quizSets.map(mapQuizSet) });
+  try {
+    const { data: quizSets, error } = await supabase
+      .from('quiz_sets')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch quizzes database error:', error);
+      return res.status(500).json({ error: `Failed to fetch quizzes: ${error.message}` });
+    }
+
+    const safeQuizSets = (quizSets || []).map(mapQuizSet).filter(Boolean);
+    res.json({ quizSets: safeQuizSets });
+  } catch (err) {
+    console.error('GET /api/teacher/quiz exception:', err);
+    res.status(500).json({ error: `Internal server error: ${err.message}` });
+  }
 });
 
 app.get('/api/teacher/quiz/:quizId/attempts', requireTeacher, async (req, res) => {
@@ -368,8 +405,12 @@ app.get('/api/teacher/quiz/:quizId/attempts', requireTeacher, async (req, res) =
       startedAt: a.started_at,
       submittedAt: a.submitted_at,
       studentEmail: a.students?.email || 'unknown',
-      studentName: a.students?.name || 'unknown',
-      studentUucmsNo: a.students?.uucms_no || 'unknown',
+      studentName: a.students?.team_name || a.students?.email || 'unknown',
+      studentUucmsNo: (() => {
+        const uNo = a.students?.uucms_no || '';
+        const parts = uNo.split('::');
+        return parts.length > 1 ? `Semester ${parts[0]}` : 'Semester 1';
+      })(),
       score,
       gradableTotal: gradableQuestions.length,
     };
@@ -405,7 +446,7 @@ app.post('/api/teacher/quiz/:quizId/reactivate', requireTeacher, async (req, res
     .from('quiz_sets')
     .update({ 
       is_active: true, 
-      created_at: Date.now() 
+      created_at: new Date().toISOString() 
     })
     .eq('id', quizId);
 
@@ -456,10 +497,10 @@ app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => 
   const sheet = workbook.addWorksheet('Responses');
 
   sheet.columns = [
-    { header: 'Student Name',  key: 'name',        width: 22 },
-    { header: 'Student Email', key: 'email',        width: 30 },
-    { header: 'Roll No',      key: 'uucmsNo',     width: 20 },
-    { header: 'Semester',      key: 'semester',    width: 12 },
+    { header: 'Team Name / No',  key: 'name',        width: 22 },
+    { header: 'Team ID (Upper)', key: 'email',        width: 30 },
+    { header: 'Semester',      key: 'uucmsNo',     width: 20 },
+    { header: 'Quiz Semester',      key: 'semester',    width: 12 },
     { header: 'Score',         key: 'score',        width: 10 },
     { header: `/ ${gradableQuestions.length}`,      key: 'total',       width: 8  },
     { header: 'Percentage',    key: 'pct',          width: 14 },
@@ -491,9 +532,13 @@ app.get('/api/teacher/quiz/:quizId/export', requireTeacher, async (req, res) => 
     const pct = gradableQuestions.length ? Math.round((score / gradableQuestions.length) * 100) : null;
 
     const rowData = {
-      name:        student ? student.name  : 'unknown',
+      name:        student ? (student.team_name || student.email) : 'unknown',
       email:       student ? student.email : 'unknown',
-      uucmsNo:     student ? student.uucms_no : 'unknown',
+      uucmsNo:     (() => {
+        const uNo = student?.uucms_no || '';
+        const parts = uNo.split('::');
+        return parts.length > 1 ? `Semester ${parts[0]}` : 'Semester 1';
+      })(),
       semester:    quizSet.semester || '—',
       score:       gradableQuestions.length ? score : '—',
       total:       gradableQuestions.length ? gradableQuestions.length : '—',
@@ -669,23 +714,8 @@ app.get('/api/student/quiz/history', requireStudent, async (req, res) => {
 });
 
 app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
-  const requestedSem = Number(req.query.semester);
-  if (!req.query.semester || isNaN(requestedSem) || requestedSem < 1 || requestedSem > 6) {
-    return res.status(400).json({ error: 'Valid semester query parameter is required.' });
-  }
-
-  const { data: students } = await supabase.from('students').select('*').eq('id', req.user.id).limit(1);
-  if (!students || students.length === 0) return res.status(404).json({ error: 'Student profile not found.' });
-  
-  const student = students[0];
-  const allowedSems = getRollNoSemesters(student.uucms_no);
-  if (!allowedSems) return res.status(403).json({ error: 'Invalid Roll Number registration. Access denied.' });
- 
-  if (!allowedSems.includes(requestedSem)) {
-    return res.status(403).json({ error: `Access denied. Your Roll number (${student.uucms_no}) does not allow accessing Semester ${requestedSem} quizzes.` });
-  }
-
-  const { data: quizzes } = await supabase.from('quiz_sets').select('*').eq('is_active', true).eq('semester', requestedSem).limit(1);
+  // No semester filtering — all students see the same active quiz
+  const { data: quizzes } = await supabase.from('quiz_sets').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(1);
   if (!quizzes || quizzes.length === 0) return res.json({ quizSet: null });
   
   const quizSet = mapQuizSet(quizzes[0]);
@@ -712,7 +742,7 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
       answers: {},
       tab_switch_count: 0,
       status: 'in_progress',
-      started_at: Date.now(),
+      started_at: new Date().toISOString(),
     };
     
     const { error } = await supabase.from('attempts').insert(attempt);
@@ -721,11 +751,12 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
       return res.status(500).json({ error: 'Database error creating attempt' });
     }
   } else if (attempt.status === 'in_progress' && isQuizExpired) {
+    const nowIso = new Date().toISOString();
     attempt.status = 'auto_submitted';
-    attempt.submitted_at = Date.now();
+    attempt.submitted_at = nowIso;
     await supabase.from('attempts').update({ 
       status: 'auto_submitted', 
-      submitted_at: attempt.submitted_at 
+      submitted_at: nowIso 
     }).eq('id', attempt.id);
   }
 
@@ -788,7 +819,7 @@ app.post('/api/student/quiz/:quizId/tab-switch', requireStudent, async (req, res
   let updates = { tab_switch_count: newCount };
   if (newCount >= 3) {
     updates.status = 'auto_submitted';
-    updates.submitted_at = Date.now();
+    updates.submitted_at = new Date().toISOString();
     autoSubmitted = true;
   }
 
@@ -806,17 +837,14 @@ app.post('/api/student/quiz/:quizId/submit', requireStudent, async (req, res) =>
   const attempt = attempts[0];
   if (attempt.status !== 'in_progress') return res.status(400).json({ error: 'Already submitted' });
 
-  await supabase.from('attempts').update({ status: 'submitted', submitted_at: Date.now() }).eq('id', attempt.id);
+  await supabase.from('attempts').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', attempt.id);
   res.json({ ok: true });
 });
 
 // ---------- Start server for local development & Render ----------
-if (!process.env.VERCEL) {
+if (require.main === module || (!process.env.VERCEL && !process.env.VERCEL_ENV)) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
-    if (!process.env.RESEND_API_KEY) {
-      console.log('NOTE: No RESEND_API_KEY configured - OTPs will be logged to console instead of emailed.');
-    }
     if (TEACHER_EMAILS.length === 0) {
       console.log('WARNING: No TEACHER_EMAILS configured in environment - no one will be able to log in as teacher.');
     }

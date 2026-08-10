@@ -35,7 +35,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   const [successMsg, setSuccessMsg] = useState('');
 
   const [title, setTitle]               = useState('');
-  const [semester, setSemester]         = useState(1);
+  const semester = 1; // semester removed from UI, kept for API compatibility
   const [draftQuestions, setDraftQuestions] = useState([EMPTY_Q(), EMPTY_Q()]);
   const [creating, setCreating]         = useState(false);
 
@@ -299,7 +299,7 @@ export default function TeacherDashboard({ session, onLogout }) {
     setCreating(true);
     try {
       await api.createQuiz(session.token, finalTitle, cleanQuestions, semester);
-      showSuccess(`"${finalTitle}" (Semester ${semester}) is now live! 🎉`);
+      showSuccess(`"${finalTitle}" is now live! 🎉`);
       setTitle(''); setDraftQuestions([EMPTY_Q(), EMPTY_Q()]); setAiQuestions([]);
       loadQuizzes();
     } catch (err) { setError(err.message); }
@@ -366,7 +366,7 @@ export default function TeacherDashboard({ session, onLogout }) {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background:'radial-gradient(ellipse 800px 500px at 60% -120px,rgba(56,182,255,0.16),transparent),var(--bg)', display:'flex', flexDirection:'column' }}>
+    <div style={{ minHeight:'100vh', display:'flex', flexDirection:'column' }}>
 
       {/* Top Bar */}
       <div className="top-bar">
@@ -377,7 +377,14 @@ export default function TeacherDashboard({ session, onLogout }) {
             <div className="top-bar-email">{session.email}</div>
           </div>
         </div>
-        <button className="signout-link" onClick={onLogout}>Sign out</button>
+        <button className="btn-logout" onClick={onLogout} title="Logout of Teacher Dashboard">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          Logout
+        </button>
       </div>
 
       <div style={{ flex:1, maxWidth:1020, width:'100%', margin:'0 auto', padding:'24px 20px 48px' }}>
@@ -419,32 +426,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                 {/* Left — manual builder */}
                 <div>
                   <form onSubmit={handleCreateQuiz}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 16, marginBottom: 16 }}>
+                    <div style={{ marginBottom: 16 }}>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label>Quiz title</label>
                         <input type="text" placeholder={`Default: Week ${getWeeklyInterval(Date.now()).weekNum} (${getWeeklyInterval(Date.now()).rangeStr})`} value={title} onChange={e=>setTitle(e.target.value)} />
-                      </div>
-                      <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Semester</label>
-                        <select 
-                          value={semester} 
-                          onChange={e=>setSemester(Number(e.target.value))} 
-                          style={{ 
-                            padding: '10px', 
-                            borderRadius: '8px', 
-                            border: '1.5px solid var(--border)', 
-                            background: 'rgba(255,255,255,0.05)', 
-                            color: 'var(--text)', 
-                            width: '100%', 
-                            height: '42px', 
-                            marginTop: '2px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {[1,2,3,4,5,6].map(num => (
-                            <option key={num} value={num} style={{ background: 'rgba(7,15,28,0.95)', color: '#fff' }}>Semester {num}</option>
-                          ))}
-                        </select>
                       </div>
                     </div>
 
@@ -465,8 +450,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                             )}
                           </div>
 
-                          {/* 4 options in 2×2 grid */}
-                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, paddingLeft:36, marginBottom:10 }}>
+                          {/* 4 options in responsive grid */}
+                          <div className="options-draft-grid">
                             {LETTERS.map((letter, oi) => (
                               <div key={oi} style={{ display:'flex', alignItems:'center', gap:6 }}>
                                 <span style={{ width:22, height:22, borderRadius:6, background:'rgba(56,182,255,0.15)', border:'1px solid rgba(56,182,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, fontWeight:700, color:'var(--accent-bright)', flexShrink:0 }}>{letter}</span>
@@ -477,7 +462,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                           </div>
 
                           {/* Correct answer picker */}
-                          <div style={{ paddingLeft:36 }}>
+                          <div className="correct-answer-picker">
                             <div style={{ fontSize:11.5, fontWeight:600, color:'var(--text-muted)', marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em' }}>
                               ✓ Correct answer
                             </div>
@@ -579,7 +564,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                                     <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize:11, padding:'4px 10px', flexShrink:0 }} onClick={()=>addGeneratedQuestion(q)}>+ Add</button>
                                   </div>
                                   {obj.options.length > 0 && (
-                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                                    <div className="ai-options-grid">
                                       {obj.options.map((opt, oi) => (
                                         <span key={oi} style={{ fontSize:11.5, color: opt===obj.correctAnswer?'var(--success)':'var(--text-soft)', display:'flex', gap:5 }}>
                                           <span style={{ fontWeight:700, color:opt===obj.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
@@ -679,7 +664,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                                   >+ Add</button>
                                 </div>
                                 {q.options.length > 0 && (
-                                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
+                                  <div className="ai-options-grid">
                                     {q.options.map((opt, oi) => (
                                       <span key={oi} style={{ fontSize:11.5, display:'flex', gap:5, color: opt===q.correctAnswer?'var(--success)':'var(--text-soft)' }}>
                                         <span style={{ fontWeight:700, color: opt===q.correctAnswer?'var(--success)':'var(--accent-bright)', flexShrink:0 }}>
@@ -723,9 +708,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                         ) : (
                           <span className="badge">● Live</span>
                         ))}
-                        {q.semester && (
-                          <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.25)' }}>Sem {q.semester}</span>
-                        )}
+
                       </div>
                       <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                     </div>
@@ -804,7 +787,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                               <span style={{ fontSize:18, width:28, textAlign:'center', flexShrink:0 }}>{medals[rank] || `#${rank+1}`}</span>
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ fontWeight:600, fontSize:14, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.studentName}</div>
-                                <div style={{ fontSize:11.5, color:'var(--text-muted)' }}>{a.studentEmail}</div>
+                                <div style={{ fontSize:11.5, color:'var(--text-muted)' }}>{a.studentUucmsNo}</div>
                               </div>
                               {pct !== null && (
                                 <div style={{ textAlign:'right', flexShrink:0 }}>
@@ -830,8 +813,8 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <table className="responses">
                       <thead>
                         <tr>
-                          <th>Student</th>
-                          <th>Roll No</th>
+                          <th>Team Name / No</th>
+
                           <th>Score</th>
                           <th>Status</th>
                           <th>Switches</th>
@@ -840,11 +823,10 @@ export default function TeacherDashboard({ session, onLogout }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedAttempts.map(a => (
+                        {sorted.map(a => (
                           <tr key={a.id}>
                             <td>
                               <strong style={{ color:'var(--text)', display:'block' }}>{a.studentName}</strong>
-                              <span style={{ color:'var(--text-muted)', fontSize:11 }}>{a.studentEmail}</span>
                             </td>
                             <td style={{ fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-soft)' }}>
                               {a.studentUucmsNo || '—'}
@@ -902,6 +884,21 @@ export default function TeacherDashboard({ session, onLogout }) {
             })()}
           </div>
         )}
+
+        {/* Teacher Section Footer */}
+        <div style={{ marginTop: 32, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Signed in as <strong style={{ color: 'var(--text-soft)' }}>{session.email}</strong> (Teacher)
+          </div>
+          <button className="btn-logout" onClick={onLogout} title="Logout of Teacher Dashboard">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Logout
+          </button>
+        </div>
       </div>
     </div>
   );
