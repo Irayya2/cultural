@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { api } from '../api';
+import { api } from '../api.js';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 const EMPTY_Q = () => ({ text: '', options: ['', '', '', ''], correctAnswer: '' });

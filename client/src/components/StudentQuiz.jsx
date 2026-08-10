@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { api } from '../api';
+import { api } from '../api.js';
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 

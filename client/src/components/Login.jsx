@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { api } from '../api';
+import { api } from '../api.js';
 
 export default function Login({ onLogin }) {
   const [role, setRole] = useState('student');

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import Login from './components/Login';
-import StudentQuiz from './components/StudentQuiz';
-import TeacherDashboard from './components/TeacherDashboard';
-import BackgroundSlider from './components/BackgroundSlider';
+import Login from './components/Login.jsx';
+import StudentQuiz from './components/StudentQuiz.jsx';
+import TeacherDashboard from './components/TeacherDashboard.jsx';
+import BackgroundSlider from './components/BackgroundSlider.jsx';
 
 const SESSION_KEY = 'quiz_session_v1';
 
