@@ -22,12 +22,12 @@ const MALPRACTICE_SHORTCUTS = [
 function detectShortcut(e) { return (MALPRACTICE_SHORTCUTS.find(s => s.test(e)) || null)?.label ?? null; }
 
 const RULES = [
+  { icon: '⏱️', title: '30-Minute Timer', body: 'You have a fixed 30 minutes (half an hour) to complete the quiz, irrespective of the number of questions.' },
   { icon: '🔀', title: 'Randomised questions', body: 'Every student gets questions in a different order — copying answers won\'t help.' },
   { icon: '🚫', title: 'No tab switching', body: 'Switching apps, minimising, or opening a new tab is detected instantly.' },
   { icon: '⚠️', title: 'Three strikes', body: 'Three malpractice actions and your quiz is auto-submitted with whatever you\'ve answered.' },
-  { icon: '🔒', title: 'No going back', body: 'Once you start, you cannot pause. Make sure you\'re ready and have no distractions open.' },
+  { icon: '🔒', title: 'Continuous timer', body: 'Once you start, timer runs continuously. Make sure you\'re ready before starting.' },
   { icon: '✅', title: 'Auto-saved', body: 'Answers save as you select them — no data is lost if the page refreshes.' },
-  { icon: '📊', title: 'Instant score', body: 'Your score appears as soon as you submit.' },
 ];
 
 function startedKey(quizId) { return `quiz-started-${quizId}`; }
@@ -54,21 +54,20 @@ function getWeeklyInterval(createdAt) {
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) {
-    return { weekNum: 1, rangeStr: "Jul 19, 2026 - Jul 25, 2026" };
+    return { weekNum: 1 };
   }
 
   const weekNum = Math.floor(diffDays / 7) + 1;
-  const weekStart = new Date(startDate.getTime() + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
-  const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+  return { weekNum };
+}
 
-  const format = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  return {
-    weekNum,
-    rangeStr: `${format(weekStart)} - ${format(weekEnd)}`
-  };
+function formatQuizTitle(title, weekNum) {
+  if (!title) return `Week ${weekNum || 1} Quiz`;
+  let clean = title.replace(/\s*\([A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?\s*-\s*[A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?\)/gi, '').trim();
+  if (weekNum && !clean.toLowerCase().startsWith(`week ${weekNum}`)) {
+    return `Week ${weekNum} · ${clean}`;
+  }
+  return clean;
 }
 
 export default function StudentQuiz({ session, onLogout }) {
@@ -213,8 +212,8 @@ export default function StudentQuiz({ session, onLogout }) {
   }, [reportMalpractice]);
 
   // ── Total duration & reverse countdown timer calculation ─────────────
-  const perQuestionSec = quizSet?.timeLimitSec || 72;
-  const totalDurationSec = (questions.length || 1) * perQuestionSec;
+  // Fixed total duration: 30 minutes (half an hour = 1800s) irrespective of number of questions
+  const totalDurationSec = 30 * 60;
 
   useEffect(() => {
     if (!started || status !== 'in_progress' || !quizSet || questions.length === 0) {
@@ -355,7 +354,7 @@ export default function StudentQuiz({ session, onLogout }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {quizSet && started && !isLocked && timeLeft !== null && (
-            <div className={`quiz-timer-badge ${timeLeft < 60 ? 'warning' : ''}`} title="Time remaining for this quiz">
+            <div className={`quiz-timer-badge ${timeLeft < 180 ? 'warning' : ''}`} title="Time remaining for this quiz">
               <span>⏱️</span>
               <span>{formatTime(timeLeft)}</span>
             </div>
@@ -415,7 +414,7 @@ export default function StudentQuiz({ session, onLogout }) {
                       <span className="banner-locked-icon">⛔</span>
                       <strong style={{ fontSize: 18 }}>Quiz auto-submitted</strong>
                       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
-                        {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                        {formatQuizTitle(quizSet?.title, activeWeekInfo?.weekNum)}
                       </div>
                       <p>Your answers were automatically submitted after 3 malpractice detections.</p>
                       {scorePct !== null && (
@@ -431,7 +430,7 @@ export default function StudentQuiz({ session, onLogout }) {
                       <span className="banner-locked-icon">{scorePct !== null ? scoreEmoji(scorePct) : '✅'}</span>
                       <strong style={{ fontSize: 20 }}>Quiz submitted!</strong>
                       <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, marginBottom: 4 }}>
-                        {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet?.title}
+                        {formatQuizTitle(quizSet?.title, activeWeekInfo?.weekNum)}
                       </div>
                     </div>
                   )}
@@ -563,12 +562,17 @@ export default function StudentQuiz({ session, onLogout }) {
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Questions</div>
                     </div>
                     <div style={{ width: 1, background: 'var(--border)' }} />
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent-bright)' }}>30 Mins</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Total Time</div>
+                    </div>
+                    <div style={{ width: 1, background: 'var(--border)' }} />
                     <div style={{ flex: 2, display: 'flex', alignItems: 'center', paddingLeft: 12 }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                          {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet.title}
+                          {formatQuizTitle(quizSet?.title, activeWeekInfo?.weekNum)}
                         </div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>Your question order is unique to you</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>30 minutes limit for the entire quiz</div>
                       </div>
                     </div>
                   </div>
@@ -604,7 +608,7 @@ export default function StudentQuiz({ session, onLogout }) {
               /* ── Active quiz ── */
               <div className="question-card">
                 {timeLeft !== null && (
-                  <div className={`active-quiz-timer ${timeLeft < 60 ? 'warning' : ''}`}>
+                  <div className={`active-quiz-timer ${timeLeft < 180 ? 'warning' : ''}`}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: 16 }}>⏱️</span>
                       <span style={{ fontSize: 13, fontWeight: 700 }}>Time Remaining:</span>
@@ -617,7 +621,7 @@ export default function StudentQuiz({ session, onLogout }) {
                 <div className="question-meta">
                   <div className="question-counter">
                     <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>
-                      {activeWeekInfo ? `Week ${activeWeekInfo.weekNum} (${activeWeekInfo.rangeStr}) · ` : ''}{quizSet.title}
+                      {formatQuizTitle(quizSet?.title, activeWeekInfo?.weekNum)}
                     </span>
                     <div className="question-counter-dots">
                       {questions.map((q, i) => (
@@ -690,7 +694,7 @@ export default function StudentQuiz({ session, onLogout }) {
                     <div key={h.id} className="history-item-row">
                       <div style={{ textAlign: 'left' }}>
                         <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
-                          {weekInfo ? `Week ${weekInfo.weekNum} (${weekInfo.rangeStr}) · ` : ''}{h.quizTitle}
+                          {formatQuizTitle(h.quizTitle, weekInfo?.weekNum)}
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
                           Semester {h.semester} · {h.status === 'in_progress' ? 'Started' : 'Submitted on ' + submittedDate}

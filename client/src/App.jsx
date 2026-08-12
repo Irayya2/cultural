@@ -36,6 +36,7 @@ function App() {
   function handleLogin(newSession) {
     setSession(newSession);
     window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(newSession));
+    window.dispatchEvent(new CustomEvent('iru-trigger-intro'));
   }
 
   function handleLogout() {

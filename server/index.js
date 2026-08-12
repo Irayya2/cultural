@@ -72,7 +72,7 @@ const TEACHER_EMAILS = (process.env.TEACHER_EMAILS || '')
 
 
 
-function normalizeQuizQuestion(question, fallbackTimeLimit = 72) {
+function normalizeQuizQuestion(question, fallbackTimeLimit = 1800) {
   if (typeof question === 'string') {
     return { text: question.trim(), options: [], correctAnswer: '', timeLimitSec: fallbackTimeLimit };
   }
@@ -115,7 +115,7 @@ const mapQuizSet = (q) => {
     questions: Array.isArray(questions) ? questions : [],
     isActive: Boolean(q.is_active),
     createdAt: q.created_at ? (typeof q.created_at === 'number' ? q.created_at : (isNaN(new Date(q.created_at).getTime()) ? Date.now() : new Date(q.created_at).getTime())) : Date.now(),
-    timeLimitSec: Number.isFinite(firstTimeLimit) ? firstTimeLimit : 72,
+    timeLimitSec: Number.isFinite(firstTimeLimit) ? firstTimeLimit : 1800,
   };
 };
 
@@ -286,14 +286,14 @@ app.post('/api/teacher/quiz', requireTeacher, async (req, res) => {
   await supabase.from('quiz_sets').update({ is_active: false }).eq('is_active', true);
 
   const normalizedQuestions = questions
-    .map((q) => normalizeQuizQuestion(q, 72))
+    .map((q) => normalizeQuizQuestion(q, 1800))
     .filter((q) => q.text)
     .map((q) => ({
       id: uuidv4(),
       text: q.text,
       options: q.options,
       correctAnswer: q.correctAnswer || '',
-      timeLimitSec: q.timeLimitSec || 72,
+      timeLimitSec: q.timeLimitSec || 1800,
     }));
 
   const quizSet = {
@@ -802,7 +802,7 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
     quizSet: { 
       id: quizSet.id, 
       title: quizSet.title, 
-      timeLimitSec: quizSet.timeLimitSec || 72,
+      timeLimitSec: quizSet.timeLimitSec || 1800,
       createdAt: quizSet.createdAt
     },
     questions: finalQuestions,

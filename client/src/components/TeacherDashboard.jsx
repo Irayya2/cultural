@@ -9,23 +9,22 @@ function getWeeklyInterval(createdAt) {
   const d = createdAt ? new Date(createdAt) : new Date();
   const diffTime = d.getTime() - startDate.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays < 0) {
-    return { weekNum: 1, rangeStr: "Jul 19, 2026 - Jul 25, 2026" };
+    return { weekNum: 1 };
   }
-  
+
   const weekNum = Math.floor(diffDays / 7) + 1;
-  const weekStart = new Date(startDate.getTime() + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
-  const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
-  
-  const format = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-  
-  return {
-    weekNum,
-    rangeStr: `${format(weekStart)} - ${format(weekEnd)}`
-  };
+  return { weekNum };
+}
+
+function formatQuizTitle(title, weekNum) {
+  if (!title) return `Week ${weekNum || 1} Quiz`;
+  let clean = title.replace(/\s*\([A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?\s*-\s*[A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?\)/gi, '').trim();
+  if (weekNum && !clean.toLowerCase().startsWith(`week ${weekNum}`)) {
+    return `Week ${weekNum} · ${clean}`;
+  }
+  return clean;
 }
 
 export default function TeacherDashboard({ session, onLogout }) {
@@ -290,7 +289,7 @@ export default function TeacherDashboard({ session, onLogout }) {
       correctAnswer: q.correctAnswer.trim(),
     }));
     const currentWeek = getWeeklyInterval(Date.now());
-    const finalTitle = title.trim() || `Week ${currentWeek.weekNum} Quiz (${currentWeek.rangeStr})`;
+    const finalTitle = title.trim() || `Week ${currentWeek.weekNum} Quiz`;
     if (cleanQuestions.length === 0) return setError('Add at least one question.');
     const missingOptions = cleanQuestions.filter(q=>q.options.length < 2);
     if (missingOptions.length > 0) return setError(`Add at least 2 options for: "${missingOptions[0].text.slice(0,60)}"`);
@@ -429,7 +428,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                     <div style={{ marginBottom: 16 }}>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label>Quiz title</label>
-                        <input type="text" placeholder={`Default: Week ${getWeeklyInterval(Date.now()).weekNum} (${getWeeklyInterval(Date.now()).rangeStr})`} value={title} onChange={e=>setTitle(e.target.value)} />
+                        <input type="text" placeholder={`Default: Week ${getWeeklyInterval(Date.now()).weekNum} Quiz`} value={title} onChange={e=>setTitle(e.target.value)} />
                       </div>
                     </div>
 
@@ -702,7 +701,7 @@ export default function TeacherDashboard({ session, onLogout }) {
                   <div className="quiz-card" key={q.id}>
                     <div>
                       <div className="quiz-card-title">
-                        Week {weekInfo.weekNum} ({weekInfo.rangeStr}) · {q.title}
+                        {formatQuizTitle(q.title, weekInfo?.weekNum)}
                         {q.isActive && (Date.now() > q.createdAt + 2 * 24 * 60 * 60 * 1000 ? (
                           <span className="badge" style={{ background: 'var(--warn-bg)', color: 'var(--warn)', border: '1px solid rgba(250,204,21,0.3)' }}>● Closed</span>
                         ) : (
@@ -733,7 +732,7 @@ export default function TeacherDashboard({ session, onLogout }) {
               <button className="btn btn-ghost btn-sm" onClick={()=>setSelectedQuiz(null)}>← Back</button>
               <div>
                 <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>
-                  {selectedWeekInfo ? `Week ${selectedWeekInfo.weekNum} (${selectedWeekInfo.rangeStr}) · ` : ''}{selectedQuiz.title}
+                  {formatQuizTitle(selectedQuiz?.title, selectedWeekInfo?.weekNum)}
                 </div>
                 <div style={{ fontSize:12, color:'var(--text-muted)' }}>
                   {selectedQuiz.createdAt ? `Posted on ${new Date(selectedQuiz.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ` : ''}Results &amp; responses
