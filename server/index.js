@@ -809,6 +809,7 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
     answers: attempt.answers,
     tabSwitchCount: attempt.tab_switch_count,
     status: attempt.status,
+    startedAt: attempt.started_at,
   });
 });
 

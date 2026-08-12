@@ -82,8 +82,17 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="app-shell">
-      <div className="card card--narrow">
-        <p className="eyebrow">Weekly Quiz</p>
+      {/* Ambient background lighting mesh */}
+      <div className="ambient-glow-wrapper" aria-hidden="true">
+        <div className="ambient-orb ambient-orb--blue" />
+        <div className="ambient-orb ambient-orb--purple" />
+      </div>
+
+      <div className="card card--narrow card--interactive">
+        <div className="card-shine" />
+        <p className="eyebrow">
+          <span className="eyebrow-dot" /> Weekly Quiz
+        </p>
         <h1 className="title">Welcome back</h1>
 
         <p className="subtitle">Sign in with your credentials.</p>
@@ -95,6 +104,12 @@ export default function Login({ onLogin }) {
             onClick={() => switchRole('student')}
           >
             <span className="water-wave-glow" />
+            <svg className="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
             Participant
           </button>
           <button
@@ -103,6 +118,11 @@ export default function Login({ onLogin }) {
             onClick={() => switchRole('teacher')}
           >
             <span className="water-wave-glow" />
+            <svg className="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
             Organizer
           </button>
         </div>
@@ -114,58 +134,94 @@ export default function Login({ onLogin }) {
             <>
               <div className="field">
                 <label htmlFor="teamName">Team Number / Name</label>
-                <input
-                  id="teamName"
-                  type="text"
-                  placeholder="Enter Team Number:"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  autoFocus
-                  required
-                />
+                <div className="input-with-icon">
+                  <svg className="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  <input
+                    id="teamName"
+                    type="text"
+                    placeholder="Enter Team Number:"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    autoFocus
+                    required
+                  />
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Enter team password :"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="input-with-icon">
+                  <svg className="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <input
+                    id="password"
+                    type="password"
+                    placeholder="Enter team password :"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
             </>
           ) : (
             <>
               <div className="field">
                 <label htmlFor="teacherId">Teacher ID</label>
-                <input
-                  id="teacherId"
-                  type="text"
-                  placeholder="e.g. teacher@1"
-                  value={teacherId}
-                  onChange={(e) => setTeacherId(e.target.value)}
-                  autoFocus
-                  required
-                />
+                <div className="input-with-icon">
+                  <svg className="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  <input
+                    id="teacherId"
+                    type="text"
+                    placeholder="e.g. teacher@1"
+                    value={teacherId}
+                    onChange={(e) => setTeacherId(e.target.value)}
+                    autoFocus
+                    required
+                  />
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
+                <div className="input-with-icon">
+                  <svg className="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <input
+                    id="password"
+                    type="password"
+                    placeholder="Enter password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
             </>
           )}
 
           <button className="btn btn-primary btn-signin-pill" type="submit" disabled={loading}>
-            {loading ? <><span className="spinner" /> Signing in…</> : 'Sign in →'}
+            {loading ? (
+              <>
+                <span className="spinner" /> Signing in…
+              </>
+            ) : (
+              <>
+                <span>Sign in</span>
+                <svg className="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </>
+            )}
           </button>
         </form>
 
@@ -193,7 +249,9 @@ export default function Login({ onLogin }) {
                 }
               }}
             />
-            <div className="login-credit-fallback" style={{ display: 'none' }}>I</div>
+            <div className="login-credit-fallback" style={{ display: 'none' }}>
+              I
+            </div>
           </div>
           <div className="login-credit-info">
             <span className="login-credit-label">Developed by</span>

@@ -123,7 +123,8 @@ export default function DevelopedByIru({ hideBadge = false }) {
   };
 
   useEffect(() => {
-    triggerIntro();
+    // Initial intro animation on page load removed as requested
+
 
     const handleOffline = () => {
       setIsOffline(true);

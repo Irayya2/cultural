@@ -31,6 +31,14 @@ const RULES = [
 ];
 
 function startedKey(quizId) { return `quiz-started-${quizId}`; }
+function startTimeKey(quizId) { return `quiz-starttime-${quizId}`; }
+
+function formatTime(seconds) {
+  if (seconds === null || seconds === undefined || isNaN(seconds)) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 const BANNER_IMAGES = ['/1.png', '/2.png', '/3.png', '/4.png'];
 function getBannerImage(key = 1) {
@@ -38,9 +46,6 @@ function getBannerImage(key = 1) {
   const idx = Math.abs(num - 1) % BANNER_IMAGES.length;
   return BANNER_IMAGES[idx];
 }
-
-
-
 
 function getWeeklyInterval(createdAt) {
   const startDate = new Date('2026-07-19T00:00:00');
@@ -67,8 +72,6 @@ function getWeeklyInterval(createdAt) {
 }
 
 export default function StudentQuiz({ session, onLogout }) {
-
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [quizSet, setQuizSet] = useState(null);
@@ -80,6 +83,8 @@ export default function StudentQuiz({ session, onLogout }) {
   const [submitting, setSubmitting] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [started, setStarted] = useState(false); // instructions gate
+  const [startTime, setStartTime] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showRemainingBanner, setShowRemainingBanner] = useState(false);
@@ -88,6 +93,7 @@ export default function StudentQuiz({ session, onLogout }) {
   const statusRef = useRef('in_progress');
   const startedRef = useRef(false);
   const lastReportedRef = useRef(0);
+  const autoSubmitRef = useRef(false);
 
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { startedRef.current = started; }, [started]);
@@ -110,11 +116,31 @@ export default function StudentQuiz({ session, onLogout }) {
         setTabSwitchCount(data.tabSwitchCount || 0);
         setStatus(data.status);
         quizIdRef.current = data.quizSet.id;
+
+        const qId = data.quizSet.id;
         // Restore started state from localStorage
         const alreadyStarted = data.status !== 'in_progress' ||
-          localStorage.getItem(startedKey(data.quizSet.id)) === '1';
+          localStorage.getItem(startedKey(qId)) === '1';
         setStarted(alreadyStarted);
         startedRef.current = alreadyStarted;
+
+        // Restore start timestamp
+        let startMs = null;
+        if (data.startedAt) {
+          startMs = new Date(data.startedAt).getTime();
+        }
+        const localStart = localStorage.getItem(startTimeKey(qId));
+        if (localStart) {
+          const parsed = Number(localStart);
+          if (!startMs || parsed < startMs) startMs = parsed;
+        }
+        if (startMs) {
+          setStartTime(startMs);
+          localStorage.setItem(startTimeKey(qId), String(startMs));
+        }
+
+        // Always start from question 1 (index 0)
+        setCurrentIdx(0);
       }
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -186,10 +212,58 @@ export default function StudentQuiz({ session, onLogout }) {
     return () => window.removeEventListener('blur', handleBlur);
   }, [reportMalpractice]);
 
+  // ── Total duration & reverse countdown timer calculation ─────────────
+  const perQuestionSec = quizSet?.timeLimitSec || 72;
+  const totalDurationSec = (questions.length || 1) * perQuestionSec;
+
+  useEffect(() => {
+    if (!started || status !== 'in_progress' || !quizSet || questions.length === 0) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const quizId = quizSet.id;
+    let startMs = startTime;
+    if (!startMs) {
+      const stored = localStorage.getItem(startTimeKey(quizId));
+      if (stored) {
+        startMs = Number(stored);
+        setStartTime(startMs);
+      } else {
+        startMs = Date.now();
+        localStorage.setItem(startTimeKey(quizId), String(startMs));
+        setStartTime(startMs);
+      }
+    }
+
+    const updateTimer = () => {
+      const elapsedSec = Math.floor((Date.now() - startMs) / 1000);
+      const remainingSec = Math.max(0, totalDurationSec - elapsedSec);
+      setTimeLeft(remainingSec);
+
+      if (remainingSec <= 0 && !autoSubmitRef.current) {
+        autoSubmitRef.current = true;
+        handleSubmit('time_up');
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [started, status, quizSet, questions.length, startTime, totalDurationSec]);
+
   function handleStartQuiz() {
-    localStorage.setItem(startedKey(quizSet.id), '1');
+    const qId = quizSet.id;
+    const now = Date.now();
+    localStorage.setItem(startedKey(qId), '1');
+    if (!localStorage.getItem(startTimeKey(qId))) {
+      localStorage.setItem(startTimeKey(qId), String(now));
+    }
+    setStartTime(now);
     setStarted(true);
     startedRef.current = true;
+    setCurrentIdx(0);
+    autoSubmitRef.current = false;
   }
 
   const saveTimers = useRef({});
@@ -201,12 +275,18 @@ export default function StudentQuiz({ session, onLogout }) {
     }, 500);
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(autoReason) {
     setSubmitting(true); setError('');
     try {
       await api.submitQuiz(session.token, quizSet.id);
       setStatus('submitted');
-      localStorage.removeItem(startedKey(quizSet.id));
+      if (quizSet?.id) {
+        localStorage.removeItem(startedKey(quizSet.id));
+        localStorage.removeItem(startTimeKey(quizSet.id));
+      }
+      if (autoReason === 'time_up') {
+        showToast('⏰ Time\'s up! Your quiz was automatically submitted.', 'warn');
+      }
       await loadQuiz();
       loadHistory();
     } catch (err) { setError(err.message); }
@@ -274,7 +354,12 @@ export default function StudentQuiz({ session, onLogout }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-
+          {quizSet && started && !isLocked && timeLeft !== null && (
+            <div className={`quiz-timer-badge ${timeLeft < 60 ? 'warning' : ''}`} title="Time remaining for this quiz">
+              <span>⏱️</span>
+              <span>{formatTime(timeLeft)}</span>
+            </div>
+          )}
           {quizSet && started && !isLocked && (
             <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{answeredCount}/{questions.length} answered</span>
           )}
@@ -518,6 +603,17 @@ export default function StudentQuiz({ session, onLogout }) {
             ) : (
               /* ── Active quiz ── */
               <div className="question-card">
+                {timeLeft !== null && (
+                  <div className={`active-quiz-timer ${timeLeft < 60 ? 'warning' : ''}`}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 16 }}>⏱️</span>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>Time Remaining:</span>
+                    </div>
+                    <span style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Space Grotesk', monospace" }}>
+                      {formatTime(timeLeft)}
+                    </span>
+                  </div>
+                )}
                 <div className="question-meta">
                   <div className="question-counter">
                     <span style={{ fontSize: 13, color: 'var(--text-soft)' }}>
