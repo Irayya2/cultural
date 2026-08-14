@@ -314,6 +314,82 @@ app.post('/api/teacher/quiz', requireTeacher, async (req, res) => {
   res.json({ ok: true, quizSet: mapQuizSet(quizSet) });
 });
 
+app.put('/api/teacher/quiz/:quizId', requireTeacher, async (req, res) => {
+  const { quizId } = req.params;
+  const { title, questions, semester, repost, resetAttempts } = req.body;
+
+  if (!title || !Array.isArray(questions) || questions.length === 0) {
+    return res.status(400).json({ error: 'Title and at least one question are required' });
+  }
+
+  // Check if quiz exists
+  const { data: existingQuizzes, error: fetchErr } = await supabase
+    .from('quiz_sets')
+    .select('*')
+    .eq('id', quizId)
+    .limit(1);
+
+  if (fetchErr || !existingQuizzes || existingQuizzes.length === 0) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+
+  const existingQuiz = existingQuizzes[0];
+  const semNum = Number(semester) && Number(semester) >= 1 && Number(semester) <= 6
+    ? Number(semester)
+    : (existingQuiz.semester || 1);
+
+  const normalizedQuestions = questions
+    .map((q) => normalizeQuizQuestion(q, 1800))
+    .filter((q) => q.text)
+    .map((q) => ({
+      id: q.id || uuidv4(),
+      text: q.text,
+      options: q.options,
+      correctAnswer: q.correctAnswer || '',
+      timeLimitSec: q.timeLimitSec || 1800,
+    }));
+
+  const updatePayload = {
+    title: title.trim(),
+    semester: semNum,
+    questions: normalizedQuestions,
+  };
+
+  if (repost) {
+    // Deactivate ALL other active quizzes before reposting this one
+    await supabase.from('quiz_sets').update({ is_active: false }).neq('id', quizId);
+    updatePayload.is_active = true;
+    updatePayload.created_at = new Date().toISOString(); // resets the 2-day live timer
+  }
+
+  const { error: updateErr } = await supabase
+    .from('quiz_sets')
+    .update(updatePayload)
+    .eq('id', quizId);
+
+  if (updateErr) {
+    console.error("Update quiz error:", updateErr);
+    return res.status(500).json({ error: 'Failed to update quiz in database' });
+  }
+
+  if (resetAttempts) {
+    const { error: resetErr } = await supabase
+      .from('attempts')
+      .delete()
+      .eq('quiz_set_id', quizId);
+    if (resetErr) {
+      console.warn("Could not reset attempts after quiz update:", resetErr);
+    }
+  }
+
+  const updatedQuiz = {
+    ...existingQuiz,
+    ...updatePayload,
+  };
+
+  res.json({ ok: true, quizSet: mapQuizSet(updatedQuiz) });
+});
+
 app.post('/api/teacher/generate-questions', requireTeacher, async (req, res) => {
   const { topic, count } = req.body;
   if (!topic) return res.status(400).json({ error: 'Topic is required' });
@@ -324,42 +400,61 @@ app.post('/api/teacher/generate-questions', requireTeacher, async (req, res) => 
   if (!apiKey) return res.status(500).json({ error: 'Gemini API Key is not configured on the server.' });
 
   async function fetchQuestionBatch(batchSize) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `Generate exactly ${batchSize} educational multiple-choice quiz questions for the topic: "${topic}". Each question must be a single, clear MCQ with exactly four options and one correct answer. Return the result strictly as a JSON array of objects in this shape: [{"text":"...","options":["...","...","...","..."],"correctAnswer":"..."}] where correctAnswer is the exact text of the correct option (must match one of the four options exactly). Keep the wording concise, relevant to the topic, and make the distractors plausible.`
-          }]
-        }],
-        generationConfig: { responseMimeType: 'application/json' }
-      })
-    });
+    const models = ['gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+    let lastError = null;
 
-    if (!response.ok) {
-      const errJson = await response.json().catch(() => ({}));
-      throw new Error(errJson.error?.message || 'Failed to generate questions from Gemini API');
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `Generate exactly ${batchSize} educational multiple-choice quiz questions for the topic: "${topic}". Each question must be a single, clear MCQ with exactly four options and one correct answer. Return the result strictly as a JSON array of objects in this shape: [{"text":"...","options":["...","...","...","..."],"correctAnswer":"..."}] where correctAnswer is the exact text of the correct option (must match one of the four options exactly). Keep the wording concise, relevant to the topic, and make the distractors plausible.`
+              }]
+            }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        });
+
+        if (!response.ok) {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.error?.message || `Gemini API error (${response.status})`);
+        }
+
+        const data = await response.json();
+        const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!generatedText) throw new Error('Invalid response format from Gemini API.');
+
+        let questions;
+        try {
+          questions = JSON.parse(generatedText);
+        } catch (e) {
+          const cleaned = generatedText.replace(/```json/gi, '').replace(/```/g, '').trim();
+          questions = JSON.parse(cleaned);
+        }
+
+        if (!Array.isArray(questions)) throw new Error('Gemini API did not return an array of questions.');
+
+        return questions
+          .map((question) => {
+            const text = String(question?.text ?? '').trim();
+            const options = Array.isArray(question?.options)
+              ? question.options.map((option) => String(option ?? '').trim()).filter(Boolean).slice(0, 4)
+              : [];
+            const correctAnswer = String(question?.correctAnswer ?? '').trim();
+            return { text, options: options.length === 4 ? options : [], correctAnswer };
+          })
+          .filter((question) => question.text && question.options.length === 4);
+      } catch (err) {
+        lastError = err;
+        console.warn(`Model ${model} attempt failed:`, err.message);
+      }
     }
 
-    const data = await response.json();
-    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!generatedText) throw new Error('Invalid response format from Gemini API.');
-
-    const questions = JSON.parse(generatedText);
-    if (!Array.isArray(questions)) throw new Error('Gemini API did not return an array of questions.');
-
-    return questions
-      .map((question) => {
-        const text = String(question?.text ?? '').trim();
-        const options = Array.isArray(question?.options)
-          ? question.options.map((option) => String(option ?? '').trim()).filter(Boolean).slice(0, 4)
-          : [];
-        const correctAnswer = String(question?.correctAnswer ?? '').trim();
-        return { text, options: options.length === 4 ? options : [], correctAnswer };
-      })
-      .filter((question) => question.text && question.options.length === 4);
+    throw lastError || new Error('Failed to generate questions from Gemini API');
   }
 
   try {
@@ -379,7 +474,7 @@ app.post('/api/teacher/generate-questions', requireTeacher, async (req, res) => 
     res.json({ ok: true, questions: allQuestions.slice(0, requestedCount) });
   } catch (err) {
     console.error('Error generating questions:', err);
-    res.status(500).json({ error: 'An error occurred while generating questions.' });
+    res.status(500).json({ error: err.message || 'An error occurred while generating questions.' });
   }
 });
 
@@ -784,6 +879,18 @@ app.get('/api/student/quiz/active', requireStudent, async (req, res) => {
       status: 'auto_submitted', 
       submitted_at: nowIso 
     }).eq('id', attempt.id);
+  }
+
+  // If quiz was edited and new questions were added, append them to in-progress attempt's order
+  if (attempt && attempt.status === 'in_progress') {
+    const existingOrderSet = new Set(Array.isArray(attempt.question_order) ? attempt.question_order : []);
+    const missingQIds = quizSet.questions
+      .map((q) => q.id)
+      .filter((id) => id && !existingOrderSet.has(id));
+    if (missingQIds.length > 0) {
+      attempt.question_order = [...(attempt.question_order || []), ...missingQIds];
+      await supabase.from('attempts').update({ question_order: attempt.question_order }).eq('id', attempt.id);
+    }
   }
 
   const questionsById = Object.fromEntries(quizSet.questions.map((q) => [q.id, q]));

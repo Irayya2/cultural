@@ -37,6 +37,10 @@ export default function TeacherDashboard({ session, onLogout }) {
   const semester = 1; // semester removed from UI, kept for API compatibility
   const [draftQuestions, setDraftQuestions] = useState([EMPTY_Q(), EMPTY_Q()]);
   const [creating, setCreating]         = useState(false);
+  const [editingQuiz, setEditingQuiz]   = useState(null);
+  const [resetAttemptsOnUpdate, setResetAttemptsOnUpdate] = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const editorRef = useRef(null);
 
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [attempts, setAttempts]         = useState([]);
@@ -281,28 +285,88 @@ export default function TeacherDashboard({ session, onLogout }) {
     finally { setGenerating(false); }
   }
 
-  async function handleCreateQuiz(e) {
-    e.preventDefault(); setError('');
+  function startEditQuiz(quiz) {
+    setEditingQuiz(quiz);
+    setTitle(quiz.title || '');
+    setResetAttemptsOnUpdate(false);
+
+    // Map quiz questions to draft questions format (preserving existing id)
+    const mapped = (quiz.questions || []).map(q => ({
+      id: q.id,
+      text: q.text || '',
+      options: Array.isArray(q.options) && q.options.length === 4
+        ? [...q.options]
+        : [...(q.options || []), ...Array(Math.max(0, 4 - (q.options?.length || 0))).fill('')].slice(0, 4),
+      correctAnswer: q.correctAnswer || '',
+    }));
+
+    setDraftQuestions(mapped.length > 0 ? mapped : [EMPTY_Q(), EMPTY_Q()]);
+    setError('');
+    setSelectedQuiz(null);
+
+    setTimeout(() => {
+      editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+
+  function cancelEdit() {
+    setEditingQuiz(null);
+    setTitle('');
+    setDraftQuestions([EMPTY_Q(), EMPTY_Q()]);
+    setResetAttemptsOnUpdate(false);
+    setError('');
+  }
+
+  async function handleSaveQuiz(e, repost = false) {
+    if (e && e.preventDefault) e.preventDefault();
+    setError('');
     const cleanQuestions = draftQuestions.filter(q=>q.text.trim()).map(q=>({
+      id: q.id,
       text: q.text.trim(),
       options: q.options.map(o=>o.trim()).filter(Boolean),
       correctAnswer: q.correctAnswer.trim(),
     }));
     const currentWeek = getWeeklyInterval(Date.now());
-    const finalTitle = title.trim() || `Week ${currentWeek.weekNum} Quiz`;
+    const finalTitle = title.trim() || (editingQuiz ? editingQuiz.title : `Week ${currentWeek.weekNum} Quiz`);
     if (cleanQuestions.length === 0) return setError('Add at least one question.');
     const missingOptions = cleanQuestions.filter(q=>q.options.length < 2);
     if (missingOptions.length > 0) return setError(`Add at least 2 options for: "${missingOptions[0].text.slice(0,60)}"`);
     const missingAnswer = cleanQuestions.filter(q=>!q.correctAnswer);
     if (missingAnswer.length > 0) return setError(`Mark the correct answer for: "${missingAnswer[0].text.slice(0,60)}"`);
-    setCreating(true);
-    try {
-      await api.createQuiz(session.token, finalTitle, cleanQuestions, semester);
-      showSuccess(`"${finalTitle}" is now live! 🎉`);
-      setTitle(''); setDraftQuestions([EMPTY_Q(), EMPTY_Q()]); setAiQuestions([]);
-      loadQuizzes();
-    } catch (err) { setError(err.message); }
-    finally { setCreating(false); }
+
+    if (editingQuiz) {
+      setSaving(true);
+      try {
+        await api.updateQuiz(session.token, editingQuiz.id, {
+          title: finalTitle,
+          questions: cleanQuestions,
+          semester,
+          repost,
+          resetAttempts: resetAttemptsOnUpdate,
+        });
+        showSuccess(repost ? `"${finalTitle}" updated and reposted live to students! 🎉` : `"${finalTitle}" saved successfully! 💾`);
+        setEditingQuiz(null);
+        setTitle('');
+        setDraftQuestions([EMPTY_Q(), EMPTY_Q()]);
+        setAiQuestions([]);
+        setResetAttemptsOnUpdate(false);
+        loadQuizzes();
+      } catch (err) { setError(err.message); }
+      finally { setSaving(false); }
+    } else {
+      setCreating(true);
+      try {
+        await api.createQuiz(session.token, finalTitle, cleanQuestions, semester);
+        showSuccess(`"${finalTitle}" is now live! 🎉`);
+        setTitle(''); setDraftQuestions([EMPTY_Q(), EMPTY_Q()]); setAiQuestions([]);
+        loadQuizzes();
+      } catch (err) { setError(err.message); }
+      finally { setCreating(false); }
+    }
+  }
+
+  async function handleCreateQuiz(e) {
+    return handleSaveQuiz(e, true);
   }
 
   async function viewAttempts(quiz) {
@@ -411,20 +475,37 @@ export default function TeacherDashboard({ session, onLogout }) {
 
         {!selectedQuiz ? (
           <>
-            {/* ── Quiz creator ── */}
-            <div className="card" style={{ padding:0, marginBottom:24 }}>
-              <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)' }}>
-                <div className="section-title"><span className="icon">📝</span>Post this week's quiz</div>
-                <p style={{ fontSize:13, color:'var(--text-muted)', marginTop:-8 }}>
-                  Every question is MCQ. Mark the correct answer — students see their score after submission.
-                </p>
+            {/* ── Quiz creator / editor ── */}
+            <div ref={editorRef} className="card" style={{ padding:0, marginBottom:24, borderColor: editingQuiz ? 'rgba(56,182,255,0.45)' : undefined }}>
+              <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+                <div>
+                  <div className="section-title">
+                    <span className="icon">{editingQuiz ? '✏️' : '📝'}</span>
+                    {editingQuiz ? 'Edit Quiz' : "Post this week's quiz"}
+                    {editingQuiz && (
+                      <span className="badge" style={{ marginLeft: 8, background: 'rgba(56,182,255,0.15)', color: 'var(--accent-bright)', border: '1px solid rgba(56,182,255,0.3)', verticalAlign: 'middle' }}>
+                        Editing: {editingQuiz.title}
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize:13, color:'var(--text-muted)', marginTop:-8 }}>
+                    {editingQuiz
+                      ? 'Modify existing questions, add more questions (manually, via AI, or file import), and save or repost live.'
+                      : 'Every question is MCQ. Mark the correct answer — students see their score after submission.'}
+                  </p>
+                </div>
+                {editingQuiz && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit} style={{ color:'var(--text-muted)' }}>
+                    ✕ Cancel edit
+                  </button>
+                )}
               </div>
 
               <div className="dash-grid" style={{ padding:'24px', gap:32 }}>
 
                 {/* Left — manual builder */}
                 <div>
-                  <form onSubmit={handleCreateQuiz}>
+                  <form onSubmit={(e) => handleSaveQuiz(e, !editingQuiz)}>
                     <div style={{ marginBottom: 16 }}>
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label>Quiz title</label>
@@ -495,9 +576,54 @@ export default function TeacherDashboard({ session, onLogout }) {
                       <button type="button" className="btn btn-ghost btn-sm" onClick={addDraftRow} style={{ marginTop:2 }}>+ Add question</button>
                     </div>
 
-                    <button className="btn btn-primary" type="submit" disabled={creating}>
-                      {creating ? <><span className="spinner"/>Publishing…</> : '🚀 Post quiz to all students'}
-                    </button>
+                    {editingQuiz ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-soft)', cursor: 'pointer', userSelect: 'none' }}>
+                          <input
+                            type="checkbox"
+                            checked={resetAttemptsOnUpdate}
+                            onChange={e => setResetAttemptsOnUpdate(e.target.checked)}
+                            style={{ width: 16, height: 16, cursor: 'pointer' }}
+                          />
+                          <span>🔄 Reset existing student attempts for this quiz</span>
+                        </label>
+
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <button
+                            className="btn btn-primary"
+                            type="button"
+                            disabled={saving || creating}
+                            onClick={(e) => handleSaveQuiz(e, true)}
+                          >
+                            {saving ? <><span className="spinner"/>Updating…</> : '🚀 Update & Post Live to Students'}
+                          </button>
+
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            disabled={saving || creating}
+                            onClick={(e) => handleSaveQuiz(e, false)}
+                            style={{ border: '1px solid var(--border)' }}
+                          >
+                            {saving ? <><span className="spinner spinner-dark"/>Saving…</> : '💾 Save Changes Only'}
+                          </button>
+
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            disabled={saving || creating}
+                            onClick={cancelEdit}
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button className="btn btn-primary" type="submit" disabled={creating}>
+                        {creating ? <><span className="spinner"/>Publishing…</> : '🚀 Post quiz to all students'}
+                      </button>
+                    )}
                   </form>
                 </div>
 
@@ -711,7 +837,19 @@ export default function TeacherDashboard({ session, onLogout }) {
                       </div>
                       <div className="quiz-card-meta">{q.questions.length} question{q.questions.length!==1?'s':''} · {new Date(q.createdAt).toLocaleDateString()}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{
+                          borderColor: editingQuiz?.id === q.id ? 'var(--accent-bright)' : undefined,
+                          color: editingQuiz?.id === q.id ? 'var(--accent-bright)' : undefined,
+                          background: editingQuiz?.id === q.id ? 'rgba(56,182,255,0.12)' : undefined,
+                        }}
+                        onClick={() => startEditQuiz(q)}
+                        title="Edit quiz questions and title"
+                      >
+                        ✏️ Edit
+                      </button>
                       {q.isActive && Date.now() <= q.createdAt + 2 * 24 * 60 * 60 * 1000 ? (
                         <button className="btn btn-danger btn-sm" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => handleDeactivateQuiz(q.id)}>Close</button>
                       ) : (
@@ -728,16 +866,21 @@ export default function TeacherDashboard({ session, onLogout }) {
         ) : (
           /* ── Responses / results view ── */
           <div className="card" style={{ padding:'20px 24px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setSelectedQuiz(null)}>← Back</button>
-              <div>
-                <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>
-                  {formatQuizTitle(selectedQuiz?.title, selectedWeekInfo?.weekNum)}
-                </div>
-                <div style={{ fontSize:12, color:'var(--text-muted)' }}>
-                  {selectedQuiz.createdAt ? `Posted on ${new Date(selectedQuiz.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ` : ''}Results &amp; responses
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setSelectedQuiz(null)}>← Back</button>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:16, color:'var(--text)' }}>
+                    {formatQuizTitle(selectedQuiz?.title, selectedWeekInfo?.weekNum)}
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--text-muted)' }}>
+                    {selectedQuiz.createdAt ? `Posted on ${new Date(selectedQuiz.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ` : ''}Results &amp; responses
+                  </div>
                 </div>
               </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => startEditQuiz(selectedQuiz)}>
+                ✏️ Edit quiz
+              </button>
             </div>
 
             {attemptsLoading && <div style={{ display:'flex', alignItems:'center', gap:10, color:'var(--text-muted)', padding:'16px 0' }}><span className="spinner spinner-dark" style={{ width:16,height:16,borderWidth:2 }}/> Loading…</div>}
